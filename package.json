@@ -1,0 +1,16 @@
+{
+  "name": "grcentral",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GRCentral — Continuous Governance, Risk & Compliance. Auto-detect EU regulatory changes, quantify Risk Drift over time, recommend preventive actions.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "node .tests/server.js",
+    "start": "node .tests/server.js",
+    "test": "node .tests/e2e.js && node .tests/ux-check.js && node .tests/verifier-check.js",
+    "test:http": "node .tests/http-check.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
