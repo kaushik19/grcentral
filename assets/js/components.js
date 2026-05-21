@@ -4,6 +4,39 @@
 
 window.UI = (() => {
 
+  /* ------------- SECURITY HELPERS --------------------------------- */
+
+  /* HTML-entity-escape so a string is safe to interpolate into innerHTML.
+     Covers the OWASP big-5: & < > " '. The numeric form &#39; is used for
+     single quote because &apos; isn't valid in HTML4. */
+  function htmlEscape(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /* Return the URL only if it's a safe http(s) URL; otherwise return '#'.
+     Blocks javascript:, data:, vbscript:, file:, etc. Also blocks anything
+     that doesn't parse via the URL constructor. The returned value is also
+     html-escaped so it's safe inside an href="..." attribute. */
+  function safeUrl(u) {
+    if (!u) return '#';
+    var s = String(u).trim();
+    /* Allow scheme-relative URLs (rare) — '//host' becomes 'https://host'. */
+    if (/^\/\//.test(s)) s = 'https:' + s;
+    try {
+      var parsed = new URL(s);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '#';
+      return htmlEscape(parsed.href);
+    } catch (_) {
+      return '#';
+    }
+  }
+
   const fmt = {
     date(iso) {
       if (!iso) return '—';
@@ -199,8 +232,9 @@ window.UI = (() => {
   }
 
   return {
-    fmt, avatar, badgeForBand, badgeSeverity, badgeChangeType,
-    card, kpiTile, sourcePill, chip, regulationCard, timelineRow,
-    driftGauge, openModal, closeModal
+    fmt: fmt, avatar: avatar, badgeForBand: badgeForBand, badgeSeverity: badgeSeverity, badgeChangeType: badgeChangeType,
+    card: card, kpiTile: kpiTile, sourcePill: sourcePill, chip: chip, regulationCard: regulationCard, timelineRow: timelineRow,
+    driftGauge: driftGauge, openModal: openModal, closeModal: closeModal,
+    htmlEscape: htmlEscape, safeUrl: safeUrl
   };
 })();

@@ -461,9 +461,9 @@ window.Views = (() => {
           ` : ''}
 
           <div class="flex flex-wrap gap-3 mt-5">
-            ${reg.sourceUrl ? `<a href="${reg.sourceUrl}" target="_blank" rel="noopener" class="btn btn-primary"><i data-lucide="external-link" class="w-3 h-3"></i> Open in EUR-Lex</a>` : ''}
-            ${reg.htmlUrl ? `<a href="${reg.htmlUrl}" target="_blank" rel="noopener" class="btn btn-ghost"><i data-lucide="file-text" class="w-3 h-3"></i> HTML version</a>` : ''}
-            ${reg.eli ? `<a href="${reg.eli}" target="_blank" rel="noopener" class="btn btn-ghost"><i data-lucide="link" class="w-3 h-3"></i> ELI URI</a>` : ''}
+            ${reg.sourceUrl ? `<a href="${reg.sourceUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary"><i data-lucide="external-link" class="w-3 h-3"></i> Open in EUR-Lex</a>` : ''}
+            ${reg.htmlUrl ? `<a href="${reg.htmlUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost"><i data-lucide="file-text" class="w-3 h-3"></i> HTML version</a>` : ''}
+            ${reg.eli ? `<a href="${reg.eli}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost"><i data-lucide="link" class="w-3 h-3"></i> ELI URI</a>` : ''}
           </div>
 
           ${reg.articles.length ? `
@@ -825,6 +825,25 @@ DriftScore =<br/>
         ${DATA.controls.map(c => {
           const owner = DATA.indexes.personas[c.owner];
           const driftBand = c.drift > 20 ? 'critical' : c.drift > 10 ? 'high' : c.drift > 5 ? 'elevated' : 'stable';
+          const linkedPolicy = DATA.getPolicyForControl(c.id);
+          /* SECURITY: every value interpolated here is either a known-safe
+             system string (drift band, owner.role) or escaped via UI.htmlEscape. */
+          const policyRow = linkedPolicy
+            ? `<div class="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+                 <div class="min-w-0">
+                   <div class="kpi-label">Linked policy</div>
+                   <div class="text-[12px] font-semibold truncate">${UI.htmlEscape(linkedPolicy.title)} <span class="text-white/40 font-normal">· v${UI.htmlEscape(linkedPolicy.version)}</span></div>
+                 </div>
+                 <button class="btn btn-ghost text-[11px] py-1.5" onclick="Views.openPolicyPickerModal('${UI.htmlEscape(c.id)}')">
+                   <i data-lucide="link" class="w-3 h-3"></i> Change
+                 </button>
+               </div>`
+            : `<div class="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+                 <div class="text-[11px] text-white/45">No linked policy</div>
+                 <button class="btn btn-ghost text-[11px] py-1.5" onclick="Views.openPolicyPickerModal('${UI.htmlEscape(c.id)}')">
+                   <i data-lucide="link" class="w-3 h-3"></i> Link policy
+                 </button>
+               </div>`;
           return `
             <div class="gr-card gr-card-hover p-5 fade-up">
               <div class="flex items-start justify-between mb-2">
@@ -841,6 +860,7 @@ DriftScore =<br/>
                   <div class="h-full rounded-full" style="width:${c.maturity}%;background:${RiskEngine.bandColor(driftBand)}"></div>
                 </div>
               </div>
+              ${policyRow}
               <div class="flex items-center gap-2 mt-4 pt-4 border-t border-white/5">
                 ${UI.avatar(owner)}
                 <div class="text-[12px]">
@@ -936,49 +956,62 @@ DriftScore =<br/>
           const statusColor = s.status === 'healthy' ? '#34d399' : s.status === 'degraded' ? '#fbbf24' : '#fb7185';
           const syncBadge = (s.lastSyncMin == null) ? 'never' : (s.lastSyncMin < 60 ? s.lastSyncMin + 'm ago' : Math.round(s.lastSyncMin / 60) + 'h ago');
           const flag = { EU: '🇪🇺', UK: '🇬🇧', US: '🇺🇸', IN: '🇮🇳', Global: '🌐' }[s.jurisdiction] || '';
+          /* SECURITY: every user-controlled field is rendered through UI.htmlEscape;
+             URLs are passed through UI.safeUrl which rejects non-http(s) schemes. */
+          const _name = UI.htmlEscape(s.name);
+          const _jur  = UI.htmlEscape(s.jurisdiction);
+          const _type = UI.htmlEscape(s.type);
+          const _url  = UI.safeUrl(s.url);
+          const _urlT = UI.htmlEscape(s.url);
+          const _desc = UI.htmlEscape(s.description);
+          const _fmt  = UI.htmlEscape(s.outputFormat || s.type);
+          const _ing  = UI.htmlEscape(s.ingestion || '—');
+          const _poll = UI.htmlEscape(s.pollInterval || '—');
+          const _sb   = UI.htmlEscape(syncBadge);
+          const _stat = UI.htmlEscape(s.status.toUpperCase());
           return `
             <div class="gr-card gr-card-hover p-5 fade-up flex flex-col">
               <div class="flex items-start justify-between mb-3 gap-2">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2 mb-1">
-                    <span class="font-bold text-base truncate">${s.name}</span>
+                    <span class="font-bold text-base truncate">${_name}</span>
                   </div>
                   <div class="text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-1.5">
-                    <span>${flag}</span><span>${s.jurisdiction}</span><span class="text-white/20">•</span><span>${s.type}</span>
+                    <span>${flag}</span><span>${_jur}</span><span class="text-white/20">•</span><span>${_type}</span>
                   </div>
                 </div>
                 <span class="badge ${s.status === 'healthy' ? 'badge-stable' : (s.status === 'degraded' ? 'badge-high' : 'badge-critical')}">
-                  <span class="badge-dot" style="background:${statusColor}"></span>${s.status.toUpperCase()}
+                  <span class="badge-dot" style="background:${statusColor}"></span>${_stat}
                 </span>
               </div>
 
-              <a href="${s.url}" target="_blank" rel="noopener" class="text-xs text-white/55 hover:text-babcom-300 break-all transition">${s.url}</a>
+              <a href="${_url}" target="_blank" rel="noopener noreferrer" class="text-xs text-white/55 hover:text-babcom-300 break-all transition">${_urlT}</a>
 
-              ${s.description ? '<p class="text-[11px] text-white/45 mt-2 leading-relaxed">' + s.description + '</p>' : ''}
+              ${s.description ? '<p class="text-[11px] text-white/45 mt-2 leading-relaxed">' + _desc + '</p>' : ''}
 
               <div class="grid grid-cols-2 gap-2 mt-4">
                 <div class="rounded-lg border border-white/5 px-3 py-2">
                   <div class="kpi-label">Format</div>
-                  <div class="font-semibold text-xs mt-1 truncate">${s.outputFormat || s.type}</div>
+                  <div class="font-semibold text-xs mt-1 truncate">${_fmt}</div>
                 </div>
                 <div class="rounded-lg border border-white/5 px-3 py-2">
                   <div class="kpi-label">Ingestion</div>
-                  <div class="font-semibold text-xs mt-1 truncate">${s.ingestion || '—'}</div>
+                  <div class="font-semibold text-xs mt-1 truncate">${_ing}</div>
                 </div>
                 <div class="rounded-lg border border-white/5 px-3 py-2">
                   <div class="kpi-label">Polling</div>
-                  <div class="font-semibold text-xs mt-1">${s.pollInterval || '—'}</div>
+                  <div class="font-semibold text-xs mt-1">${_poll}</div>
                 </div>
                 <div class="rounded-lg border border-white/5 px-3 py-2">
                   <div class="kpi-label">Last sync</div>
-                  <div class="font-semibold text-xs mt-1">${syncBadge}</div>
+                  <div class="font-semibold text-xs mt-1">${_sb}</div>
                 </div>
               </div>
 
               ${s.documentsTracked != null ? `
                 <div class="mt-3 flex items-center justify-between text-[11px]">
                   <span class="text-white/45">${s.documentsTracked.toLocaleString()} documents tracked</span>
-                  <a href="${s.url}" target="_blank" rel="noopener" class="text-babcom-400 hover:text-babcom-300 font-semibold">Visit →</a>
+                  <a href="${_url}" target="_blank" rel="noopener noreferrer" class="text-babcom-400 hover:text-babcom-300 font-semibold">Visit →</a>
                 </div>
               ` : ''}
             </div>`;
@@ -1161,10 +1194,12 @@ DriftScore =<br/>
 
     var preHostMatch = url.match(/^https?:\/\/([^\/]+)/);
     var preHost = preHostMatch ? preHostMatch[1] : '(invalid URL)';
+    /* SECURITY: every user-controlled string goes through UI.htmlEscape before
+       being concatenated into the verifier step labels (rendered via innerHTML). */
     var steps = [
-      'Resolving DNS for ' + preHost,
+      'Resolving DNS for ' + UI.htmlEscape(preHost),
       'Establishing TLS handshake',
-      'Fetching HEAD + sample (' + format + ')',
+      'Fetching HEAD + sample (' + UI.htmlEscape(format) + ')',
       'Parsing structure & extracting documents'
     ];
     var result = _addSrcSimulate(url, format);
@@ -1180,8 +1215,8 @@ DriftScore =<br/>
             '<i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>' +
             '<div class="min-w-0">' +
               '<div class="font-semibold">Verification failed</div>' +
-              '<div class="text-white/55 mt-1">' + result.reason + '</div>' +
-              (result.url ? '<div class="text-[10px] text-white/35 mt-2 font-mono break-all">URL checked: ' + result.url + '</div>' : '') +
+              '<div class="text-white/55 mt-1">' + UI.htmlEscape(result.reason) + '</div>' +
+              (result.url ? '<div class="text-[10px] text-white/35 mt-2 font-mono break-all">URL checked: ' + UI.htmlEscape(result.url) + '</div>' : '') +
             '</div>' +
           '</div>'
         );
@@ -1190,8 +1225,8 @@ DriftScore =<br/>
       }
       _setStepUI(steps, 4, 'pending',
         '<div class="space-y-2 text-xs">' +
-          '<div class="flex items-center justify-between"><span class="text-white/45">Host</span><span class="font-mono text-white/85">' + result.host + '</span></div>' +
-          '<div class="flex items-center justify-between"><span class="text-white/45">Detected format</span><span class="text-white/85 font-semibold">' + result.detected + '</span></div>' +
+          '<div class="flex items-center justify-between"><span class="text-white/45">Host</span><span class="font-mono text-white/85">' + UI.htmlEscape(result.host) + '</span></div>' +
+          '<div class="flex items-center justify-between"><span class="text-white/45">Detected format</span><span class="text-white/85 font-semibold">' + UI.htmlEscape(result.detected) + '</span></div>' +
           '<div class="flex items-center justify-between"><span class="text-white/45">Documents found</span><span class="text-white/85 font-semibold">' + result.docs.toLocaleString() + '</span></div>' +
           '<div class="flex items-center justify-between"><span class="text-white/45">Sample payload</span><span class="text-white/85 font-semibold">' + result.sampleSize + ' KB</span></div>' +
           '<div class="flex items-center gap-2 text-accent-emerald font-semibold pt-2"><i data-lucide="shield-check" class="w-4 h-4"></i>Source verified — ready to save</div>' +
@@ -1529,10 +1564,568 @@ DriftScore = (<br/>
     return g;
   }
 
+  /* ====================================================================== */
+  /*  12. INTERNAL POLICIES                                                 */
+  /* ====================================================================== */
+
+  /* ---- Tiny formatters ---------------------------------------------------*/
+  function _fmtBytes(n) {
+    if (!n && n !== 0) return '—';
+    if (n < 1024)            return n + ' B';
+    if (n < 1024 * 1024)     return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(2) + ' MB';
+  }
+  function _fmtDateOnly(d) {
+    if (!d) return '—';
+    var dt = new Date(d);
+    if (isNaN(dt.getTime())) return '—';
+    return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  }
+  function _daysUntil(d) {
+    if (!d) return null;
+    var dt = new Date(d);
+    if (isNaN(dt.getTime())) return null;
+    return Math.ceil((dt - new Date('2026-05-21')) / 86400000);
+  }
+  function _formatBadge(format) {
+    var map = { pdf: '#fb7185', markdown: '#22d3ee', html: '#ff9c6b', text: '#fbbf24', link: '#a78bfa' };
+    var color = map[format] || '#cbd5e1';
+    return '<span class="chip" style="background:' + color + '14;border-color:' + color + '40;color:' + color + '">' +
+           UI.htmlEscape((format || 'pdf').toUpperCase()) + '</span>';
+  }
+  function _statusBadge(status) {
+    if (status === 'draft')    return '<span class="badge badge-high">DRAFT</span>';
+    if (status === 'retired')  return '<span class="badge badge-neutral">RETIRED</span>';
+    return '<span class="badge badge-stable"><span class="badge-dot" style="background:#34d399"></span>PUBLISHED</span>';
+  }
+  function _sourceBadge(source) {
+    if (source === 'uploaded') return '<span class="pill-soft" style="color:#ffc3a3;border-color:rgba(255,90,31,0.35)"><i data-lucide="upload-cloud" class="w-3 h-3"></i>Uploaded</span>';
+    return '<span class="pill-soft"><i data-lucide="package" class="w-3 h-3"></i>Seeded</span>';
+  }
+
+  /* ---- Main view ---------------------------------------------------------*/
+  function policies(filter) {
+    filter = filter || (window.__policiesFilter || { status: 'all', source: 'all' });
+    window.__policiesFilter = filter;
+
+    var all = DATA.getAllPolicies();
+    var view = all.filter(function (p) {
+      if (filter.status !== 'all' && p.status !== filter.status) return false;
+      if (filter.source !== 'all' && p.source !== filter.source) return false;
+      return true;
+    });
+
+    var totals = {
+      total:        all.length,
+      published:    all.filter(function (p) { return p.status === 'published'; }).length,
+      draft:        all.filter(function (p) { return p.status === 'draft'; }).length,
+      uploaded:     all.filter(function (p) { return p.source === 'uploaded'; }).length,
+      dueIn90:      all.filter(function (p) { var d = _daysUntil(p.nextReviewDate); return d != null && d >= 0 && d <= 90; }).length,
+      overdue:      all.filter(function (p) { var d = _daysUntil(p.nextReviewDate); return d != null && d < 0; }).length
+    };
+    var attest = all.reduce(function (acc, p) {
+      acc.req  += (p.attestations && p.attestations.required)  || 0;
+      acc.done += (p.attestations && p.attestations.completed) || 0;
+      return acc;
+    }, { req: 0, done: 0 });
+    var attestPct = attest.req ? Math.round((attest.done / attest.req) * 100) : 0;
+
+    function filterPill(label, value, group, current) {
+      var active = current === value;
+      return '<button class="px-3 py-1.5 text-xs rounded-lg border transition ' +
+             (active ? 'bg-babcom-500/15 border-babcom-500/40 text-babcom-200' : 'border-white/10 text-white/60 hover:text-white hover:border-white/20') +
+             '" onclick="Views.setPolicyFilter(\'' + group + '\', \'' + value + '\')">' + UI.htmlEscape(label) + '</button>';
+    }
+
+    return [
+      '<div class="flex flex-wrap items-end justify-between gap-4 mb-6">',
+        '<div>',
+          '<h2 class="text-2xl font-extrabold tracking-tight">Internal Policies</h2>',
+          '<p class="text-sm text-white/55 mt-1">' + totals.total + ' policies · ' + totals.published + ' published, ' + totals.draft + ' draft · the bridge between external regulations and technical controls</p>',
+        '</div>',
+        '<div class="flex items-center gap-3">',
+          '<div class="hidden md:flex items-center gap-4 pr-4 border-r border-white/5">',
+            '<div class="text-right"><div class="kpi-label">Total</div><div class="font-bold text-sm mt-0.5">' + totals.total + '</div></div>',
+            '<div class="text-right"><div class="kpi-label">Due ≤90d</div><div class="font-bold text-sm mt-0.5 ' + (totals.dueIn90 ? 'text-accent-amber' : 'text-white/40') + '">' + totals.dueIn90 + '</div></div>',
+            '<div class="text-right"><div class="kpi-label">Overdue</div><div class="font-bold text-sm mt-0.5 ' + (totals.overdue ? 'text-accent-rose' : 'text-white/40') + '">' + totals.overdue + '</div></div>',
+            '<div class="text-right"><div class="kpi-label">Attestations</div><div class="font-bold text-sm mt-0.5">' + attestPct + '%</div></div>',
+          '</div>',
+          '<button class="btn btn-primary" onclick="Views.openUploadPolicyModal()">',
+            '<i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Upload policy',
+          '</button>',
+        '</div>',
+      '</div>',
+
+      '<div class="flex flex-wrap items-center gap-2 mb-5">',
+        '<span class="text-[10px] uppercase tracking-widest text-white/40 mr-1">Status</span>',
+        filterPill('All', 'all', 'status', filter.status),
+        filterPill('Published', 'published', 'status', filter.status),
+        filterPill('Draft', 'draft', 'status', filter.status),
+        filterPill('Retired', 'retired', 'status', filter.status),
+        '<span class="text-[10px] uppercase tracking-widest text-white/40 ml-4 mr-1">Source</span>',
+        filterPill('All', 'all', 'source', filter.source),
+        filterPill('Seeded', 'seeded', 'source', filter.source),
+        filterPill('Uploaded', 'uploaded', 'source', filter.source),
+      '</div>',
+
+      view.length === 0
+        ? '<div class="gr-card p-10 text-center text-white/55">No policies match these filters. Try clearing them or <button class="text-babcom-300 underline" onclick="Views.openUploadPolicyModal()">upload one</button>.</div>'
+        : '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">' +
+            view.map(_policyCard).join('') +
+          '</div>'
+    ].join('');
+  }
+
+  function _policyCard(p) {
+    var owner    = p.ownerId    ? DATA.indexes.personas[p.ownerId]    : null;
+    var approver = p.approverId ? DATA.indexes.personas[p.approverId] : null;
+    var review   = _daysUntil(p.nextReviewDate);
+    var reviewBadge = '';
+    if (review != null) {
+      if (review < 0)        reviewBadge = '<span class="chip" style="color:#fda4af;border-color:rgba(251,113,133,0.4)">Review overdue ' + Math.abs(review) + 'd</span>';
+      else if (review <= 90) reviewBadge = '<span class="chip" style="color:#fcd34d;border-color:rgba(251,191,36,0.4)">Review in ' + review + 'd</span>';
+      else                   reviewBadge = '<span class="chip">Reviews ' + _fmtDateOnly(p.nextReviewDate) + '</span>';
+    }
+    var regNames = (p.mapsToRegulations || []).map(function (id) {
+      var r = DATA.indexes.regulations[id]; return r ? r.shortTitle : null;
+    }).filter(Boolean);
+    var attestPct = (p.attestations && p.attestations.required)
+      ? Math.round((p.attestations.completed / p.attestations.required) * 100)
+      : null;
+
+    return [
+      '<div class="gr-card gr-card-hover p-5 fade-up flex flex-col">',
+        '<div class="flex items-start justify-between mb-3 gap-2">',
+          '<div class="min-w-0">',
+            '<div class="flex items-center gap-2 mb-1 flex-wrap">',
+              _statusBadge(p.status),
+              _formatBadge(p.format),
+              _sourceBadge(p.source),
+            '</div>',
+            '<h4 class="font-bold text-base leading-snug">' + UI.htmlEscape(p.title) + '</h4>',
+            '<div class="text-[10px] uppercase tracking-widest text-white/40 mt-1">v' + UI.htmlEscape(p.version) + ' · ' + UI.htmlEscape(p.fileName || 'no file') + ' · ' + _fmtBytes(p.fileSize) + '</div>',
+          '</div>',
+        '</div>',
+
+        '<p class="text-[12px] text-white/55 mt-1 leading-relaxed line-clamp-3">' + UI.htmlEscape(p.description || '') + '</p>',
+
+        '<div class="grid grid-cols-2 gap-2 mt-4">',
+          '<div class="rounded-lg border border-white/5 px-3 py-2"><div class="kpi-label">Regulations</div><div class="font-semibold text-xs mt-1 truncate">' + (regNames.length ? UI.htmlEscape(regNames.join(' · ')) : '—') + '</div></div>',
+          '<div class="rounded-lg border border-white/5 px-3 py-2"><div class="kpi-label">Controls</div><div class="font-semibold text-xs mt-1">' + ((p.implementedByControls || []).length || '—') + '</div></div>',
+          '<div class="rounded-lg border border-white/5 px-3 py-2"><div class="kpi-label">Effective</div><div class="font-semibold text-xs mt-1">' + _fmtDateOnly(p.effectiveDate) + '</div></div>',
+          '<div class="rounded-lg border border-white/5 px-3 py-2"><div class="kpi-label">Attestation</div><div class="font-semibold text-xs mt-1">' + (attestPct == null ? '—' : attestPct + '%') + '</div></div>',
+        '</div>',
+
+        '<div class="flex items-center gap-2 mt-3 flex-wrap">',
+          reviewBadge,
+          (p.tags || []).slice(0, 3).map(function (t) { return '<span class="chip">' + UI.htmlEscape(t) + '</span>'; }).join(''),
+        '</div>',
+
+        '<div class="mt-auto pt-4 border-t border-white/5 flex items-center gap-2">',
+          owner ? UI.avatar(owner) : '<div class="avatar" style="background:rgba(255,255,255,0.08)">·</div>',
+          '<div class="text-[11px] min-w-0">',
+            '<div class="font-semibold truncate">' + UI.htmlEscape(owner ? owner.name : 'No owner') + '</div>',
+            '<div class="text-white/40 text-[10px] truncate">' + UI.htmlEscape(owner ? owner.role : '—') + (approver ? ' · approved by ' + UI.htmlEscape(approver.name.split(' ')[0]) : '') + '</div>',
+          '</div>',
+          '<div class="ml-auto flex items-center gap-1">',
+            '<button class="btn btn-ghost text-[11px] py-1.5" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3 h-3"></i> Open</button>',
+            p.source === 'uploaded'
+              ? '<button class="btn btn-ghost text-[11px] py-1.5" title="Delete uploaded policy" onclick="Views.deletePolicy(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="trash-2" class="w-3 h-3"></i></button>'
+              : '',
+          '</div>',
+        '</div>',
+      '</div>'
+    ].join('');
+  }
+
+  function setPolicyFilter(group, value) {
+    var f = window.__policiesFilter || { status: 'all', source: 'all' };
+    f[group] = value;
+    window.__policiesFilter = f;
+    /* Re-render via the sidebar click — same trick used by saveAddSource. */
+    var nav = document.querySelector('[data-route="policies"]');
+    if (nav) nav.click();
+  }
+
+  /* ---- Open policy document ---------------------------------------------*/
+  function openPolicyDocument(policyId) {
+    var p = DATA.getPolicyById(policyId);
+    if (!p) return;
+    /* Uploaded with a file → reconstitute a blob URL and open in new tab. */
+    if (p.source === 'uploaded' && p.hasFile) {
+      var f = DATA.getPolicyFile(policyId);
+      if (f && f.base64) {
+        try {
+          var byteChars = atob(f.base64);
+          var byteNums  = new Uint8Array(byteChars.length);
+          for (var i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+          var blob = new Blob([byteNums], { type: f.mimeType || 'application/octet-stream' });
+          var url  = URL.createObjectURL(blob);
+          window.open(url, '_blank', 'noopener,noreferrer');
+          /* Best-effort revoke after a minute. */
+          setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+          return;
+        } catch (_) { /* fall through to external link if available */ }
+      }
+    }
+    /* Otherwise: open the external documentUrl (sanitised). */
+    var safe = UI.safeUrl(p.documentUrl);
+    if (safe !== '#') window.open(p.documentUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  /* ---- Delete uploaded policy -------------------------------------------*/
+  function deletePolicy(policyId) {
+    var p = DATA.getPolicyById(policyId);
+    if (!p || p.source !== 'uploaded') return;
+    if (typeof confirm === 'function' && !confirm('Delete "' + p.title + '"? This will also unlink it from any controls.')) return;
+    DATA.deleteUserPolicy(policyId);
+    var nav = document.querySelector('[data-route="policies"]');
+    if (nav) nav.click();
+  }
+
+  /* ====================================================================== */
+  /*  12.a Upload-policy modal                                              */
+  /* ====================================================================== */
+  function openUploadPolicyModal() {
+    var personasOpts = DATA.personas.map(function (p) {
+      return '<option value="' + UI.htmlEscape(p.id) + '">' + UI.htmlEscape(p.name) + ' · ' + UI.htmlEscape(p.role) + '</option>';
+    }).join('');
+    var regsOpts = DATA.regulations.map(function (r) {
+      return '<label class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-white/10 cursor-pointer hover:border-babcom-500/40">' +
+               '<input type="checkbox" class="accent-babcom-500" name="pol-regs" value="' + UI.htmlEscape(r.id) + '">' +
+               '<span class="text-xs">' + UI.htmlEscape(r.shortTitle) + '</span>' +
+             '</label>';
+    }).join('');
+    var ctrlsOpts = DATA.controls.map(function (c) {
+      return '<label class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-white/10 cursor-pointer hover:border-babcom-500/40">' +
+               '<input type="checkbox" class="accent-babcom-500" name="pol-ctrls" value="' + UI.htmlEscape(c.id) + '">' +
+               '<span class="text-xs">' + UI.htmlEscape(c.id) + '</span>' +
+             '</label>';
+    }).join('');
+
+    var html = [
+      '<div class="flex items-start justify-between mb-5">',
+        '<div>',
+          '<div class="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">New internal policy</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">Upload a policy document</h3>',
+          '<p class="text-xs text-white/55 mt-1">PDF, Markdown, HTML or TXT up to ' + (DATA.MAX_POLICY_FILE_BYTES / 1024 / 1024) + ' MB. The file lives in your browser (localStorage); no upload leaves this machine.</p>',
+        '</div>',
+        '<button onclick="UI.closeModal()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>',
+
+      '<div class="grid grid-cols-12 gap-5">',
+        /* LEFT: drop-zone + metadata */
+        '<div class="col-span-12 md:col-span-7 space-y-3">',
+          '<label for="pol-file" class="policy-drop" id="pol-drop">',
+            '<div class="icon-wrap"><i data-lucide="upload-cloud" class="w-5 h-5"></i></div>',
+            '<div class="font-semibold text-sm">Drop file here or click to browse</div>',
+            '<div class="text-[11px] text-white/45">PDF · Markdown · HTML · TXT (max ' + (DATA.MAX_POLICY_FILE_BYTES / 1024 / 1024) + ' MB)</div>',
+            '<input id="pol-file" type="file" class="hidden" accept=".pdf,.md,.markdown,.html,.htm,.txt,application/pdf,text/markdown,text/html,text/plain" onchange="Views.handlePolicyFile(this)" />',
+            '<div id="pol-file-info" class="text-[11px] text-white/55 mt-1"></div>',
+          '</label>',
+
+          '<div class="grid grid-cols-2 gap-3">',
+            '<label class="block"><span class="kpi-label">Title *</span>',
+              '<input id="pol-title" placeholder="e.g. Cloud Security Policy" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:border-babcom-500/50" />',
+            '</label>',
+            '<label class="block"><span class="kpi-label">Version</span>',
+              '<input id="pol-version" placeholder="1.0" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:border-babcom-500/50" />',
+            '</label>',
+          '</div>',
+
+          '<div class="grid grid-cols-2 gap-3">',
+            '<label class="block"><span class="kpi-label">Owner</span>',
+              '<select id="pol-owner" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50">',
+                '<option value="">— select —</option>',
+                personasOpts,
+              '</select>',
+            '</label>',
+            '<label class="block"><span class="kpi-label">Approver</span>',
+              '<select id="pol-approver" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50">',
+                '<option value="">— select —</option>',
+                personasOpts,
+              '</select>',
+            '</label>',
+          '</div>',
+
+          '<div class="grid grid-cols-2 gap-3">',
+            '<label class="block"><span class="kpi-label">Effective date</span>',
+              '<input id="pol-effective" type="date" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50" />',
+            '</label>',
+            '<label class="block"><span class="kpi-label">Next review</span>',
+              '<input id="pol-review" type="date" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50" />',
+            '</label>',
+          '</div>',
+
+          '<div class="grid grid-cols-2 gap-3">',
+            '<label class="block"><span class="kpi-label">Status</span>',
+              '<select id="pol-status" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50">',
+                '<option value="published">Published</option>',
+                '<option value="draft">Draft</option>',
+              '</select>',
+            '</label>',
+            '<label class="block"><span class="kpi-label">External URL (optional)</span>',
+              '<input id="pol-url" placeholder="https://wiki.example.com/policy" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:border-babcom-500/50 font-mono text-[12px]" />',
+            '</label>',
+          '</div>',
+
+          '<label class="block"><span class="kpi-label">Description</span>',
+            '<textarea id="pol-desc" rows="2" placeholder="What does this policy govern?" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:border-babcom-500/50 resize-none"></textarea>',
+          '</label>',
+        '</div>',
+
+        /* RIGHT: maps + actions */
+        '<div class="col-span-12 md:col-span-5">',
+          '<div class="gr-card p-4 h-full flex flex-col">',
+            '<div class="font-bold text-sm mb-3">Map to regulations</div>',
+            '<div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pb-1">' + regsOpts + '</div>',
+            '<div class="font-bold text-sm mt-5 mb-3">Implemented by controls</div>',
+            '<div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pb-1">' + ctrlsOpts + '</div>',
+            '<div id="pol-error" class="mt-4 text-xs text-accent-rose"></div>',
+            '<div class="mt-auto pt-4 grid grid-cols-2 gap-2">',
+              '<button class="btn btn-ghost text-xs justify-center" onclick="UI.closeModal()">Cancel</button>',
+              '<button class="btn btn-primary text-xs justify-center" onclick="Views.savePolicyUpload()"><i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy</button>',
+            '</div>',
+          '</div>',
+        '</div>',
+      '</div>'
+    ].join('');
+    UI.openModal(html);
+
+    /* Drag-and-drop wiring (only attaches if elements exist). */
+    var drop = document.getElementById('pol-drop');
+    var file = document.getElementById('pol-file');
+    if (drop && file) {
+      ['dragenter','dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('is-drag'); });
+      });
+      ['dragleave','drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('is-drag'); });
+      });
+      drop.addEventListener('drop', function (e) {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          file.files = e.dataTransfer.files;
+          handlePolicyFile(file);
+        }
+      });
+    }
+  }
+
+  function handlePolicyFile(input) {
+    var info = document.getElementById('pol-file-info');
+    var f = input && input.files && input.files[0];
+    if (!f) { if (info) info.textContent = ''; return; }
+    if (f.size > DATA.MAX_POLICY_FILE_BYTES) {
+      if (info) info.innerHTML = '<span class="text-accent-rose">File too large (max ' + (DATA.MAX_POLICY_FILE_BYTES / 1024 / 1024) + ' MB)</span>';
+      input.value = '';
+      return;
+    }
+    /* MIME / extension whitelist. */
+    var name = (f.name || '').toLowerCase();
+    var okExt  = /\.(pdf|md|markdown|html?|txt)$/.test(name);
+    var okMime = /^(application\/pdf|text\/(markdown|html|plain))$/.test(f.type || '');
+    if (!okExt && !okMime) {
+      if (info) info.innerHTML = '<span class="text-accent-rose">Unsupported file type. PDF / Markdown / HTML / TXT only.</span>';
+      input.value = '';
+      return;
+    }
+    var fmt = /\.pdf$/.test(name)            ? 'pdf'
+            : /\.(md|markdown)$/.test(name)  ? 'markdown'
+            : /\.html?$/.test(name)          ? 'html'
+            : 'text';
+    var reader = new FileReader();
+    reader.onload = function () {
+      /* Strip the data-URL prefix, keep just the base64 body. */
+      var s = String(reader.result || '');
+      var idx = s.indexOf('base64,');
+      var b64 = idx >= 0 ? s.slice(idx + 7) : '';
+      window.__polUploadStaged = {
+        fileName: f.name,
+        fileSize: f.size,
+        mimeType: f.type || 'application/octet-stream',
+        format:   fmt,
+        base64:   b64
+      };
+      if (info) info.innerHTML = '<i data-lucide="file" class="w-3 h-3 inline mr-1"></i><span class="text-white/80 font-semibold">' + UI.htmlEscape(f.name) + '</span> · <span class="text-white/50">' + _fmtBytes(f.size) + ' · ' + UI.htmlEscape(fmt.toUpperCase()) + '</span>';
+      if (window.lucide) lucide.createIcons();
+    };
+    reader.onerror = function () {
+      if (info) info.innerHTML = '<span class="text-accent-rose">Could not read file.</span>';
+    };
+    reader.readAsDataURL(f);
+  }
+
+  function savePolicyUpload() {
+    var err = document.getElementById('pol-error');
+    function fail(msg) { if (err) err.textContent = msg; }
+
+    var titleEl = document.getElementById('pol-title');
+    var title   = titleEl ? titleEl.value.trim() : '';
+    if (!title) return fail('Title is required.');
+
+    var staged = window.__polUploadStaged || null;
+    var urlEl  = document.getElementById('pol-url');
+    var url    = urlEl ? urlEl.value.trim() : '';
+    if (!staged && !url) return fail('Attach a file or provide an external URL.');
+    if (url) {
+      var safe = UI.safeUrl(url);
+      if (safe === '#') return fail('External URL must be a valid http(s) URL.');
+    }
+
+    var getVal = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+    var checked = function (name) {
+      return Array.prototype.slice.call(document.querySelectorAll('input[name="' + name + '"]:checked'))
+        .map(function (i) { return i.value; });
+    };
+
+    var meta = {
+      title:           title,
+      version:         getVal('pol-version') || '1.0',
+      ownerId:         getVal('pol-owner')    || null,
+      approverId:      getVal('pol-approver') || null,
+      effectiveDate:   getVal('pol-effective') || null,
+      nextReviewDate:  getVal('pol-review')    || null,
+      status:          getVal('pol-status') === 'draft' ? 'draft' : 'published',
+      documentUrl:     url || null,
+      description:     getVal('pol-desc'),
+      mapsToRegulations:    checked('pol-regs'),
+      implementedByControls:checked('pol-ctrls'),
+      format:          staged ? staged.format : 'link',
+      fileName:        staged ? staged.fileName : null,
+      fileSize:        staged ? staged.fileSize : 0
+    };
+
+    var res = DATA.addUserPolicy(meta, staged ? staged.base64 : null, staged ? staged.mimeType : null);
+    if (!res.ok) return fail(res.error);
+
+    /* Auto-link controls that the user just selected to this new policy. */
+    (meta.implementedByControls || []).forEach(function (cid) {
+      DATA.linkControlToPolicy(cid, res.policy.id);
+    });
+
+    window.__polUploadStaged = null;
+    UI.closeModal();
+    var nav = document.querySelector('[data-route="policies"]');
+    if (nav) nav.click();
+  }
+
+  /* ====================================================================== */
+  /*  12.b Policy picker (reusable, called from Controls view)              */
+  /* ====================================================================== */
+  function openPolicyPickerModal(controlId) {
+    var control = DATA.indexes.controls[controlId];
+    if (!control) return;
+    var current = DATA.getPolicyForControl(controlId);
+    var all = DATA.getAllPolicies();
+
+    function rowsHtml(q) {
+      q = (q || '').toLowerCase();
+      var rows = all.filter(function (p) {
+        if (!q) return true;
+        return (p.title + ' ' + (p.description || '') + ' ' + (p.tags || []).join(' '))
+          .toLowerCase().indexOf(q) !== -1;
+      });
+      if (rows.length === 0) return '<div class="text-xs text-white/45 py-6 text-center">No matching policies. <button class="text-babcom-300 underline" onclick="UI.closeModal(); Views.openUploadPolicyModal()">Upload one</button></div>';
+      return rows.map(function (p) {
+        var sel = current && current.id === p.id ? ' is-selected' : '';
+        var owner = p.ownerId ? DATA.indexes.personas[p.ownerId] : null;
+        return '<div class="policy-pick' + sel + '" data-pick="' + UI.htmlEscape(p.id) + '">' +
+                 '<div class="radio"></div>' +
+                 '<div class="min-w-0 flex-1">' +
+                   '<div class="flex items-center gap-2 flex-wrap mb-1">' +
+                     '<span class="font-semibold text-sm">' + UI.htmlEscape(p.title) + '</span>' +
+                     '<span class="chip">v' + UI.htmlEscape(p.version) + '</span>' +
+                     _statusBadge(p.status) +
+                     _sourceBadge(p.source) +
+                   '</div>' +
+                   '<div class="text-[11px] text-white/55 line-clamp-2">' + UI.htmlEscape(p.description || '') + '</div>' +
+                   '<div class="text-[10px] text-white/40 mt-1">' + (owner ? UI.htmlEscape(owner.name) : 'No owner') + ' · ' + (p.implementedByControls || []).length + ' control' + ((p.implementedByControls || []).length === 1 ? '' : 's') + '</div>' +
+                 '</div>' +
+               '</div>';
+      }).join('');
+    }
+
+    var html = [
+      '<div class="flex items-start justify-between mb-4">',
+        '<div>',
+          '<div class="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">Map control to policy</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">' + UI.htmlEscape(control.id) + ' · ' + UI.htmlEscape(control.name) + '</h3>',
+          '<p class="text-xs text-white/55 mt-1">Choose an existing policy or <button class="text-babcom-300 underline" onclick="UI.closeModal(); Views.openUploadPolicyModal()">upload a new one</button>.</p>',
+        '</div>',
+        '<button onclick="UI.closeModal()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>',
+
+      '<div class="relative mb-3">',
+        '<i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40"></i>',
+        '<input id="pol-pick-search" placeholder="Search policies..." class="w-full pl-9 pr-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:border-babcom-500/50" />',
+      '</div>',
+
+      '<div id="pol-pick-list" class="space-y-2 max-h-[420px] overflow-y-auto pr-1">' + rowsHtml('') + '</div>',
+
+      '<div class="mt-5 flex items-center justify-between gap-2">',
+        '<button class="btn btn-ghost text-xs" onclick="Views.selectPolicyForControl(\'' + UI.htmlEscape(controlId) + '\', null)"><i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Clear link</button>',
+        '<div class="flex items-center gap-2">',
+          '<button class="btn btn-ghost text-xs" onclick="UI.closeModal()">Cancel</button>',
+          '<button id="pol-pick-save" class="btn btn-primary text-xs"' + (current ? '' : ' disabled style="opacity:0.4;cursor:not-allowed"') + '><i data-lucide="check" class="w-3.5 h-3.5"></i> Link policy</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    UI.openModal(html);
+
+    /* Wire click selection + search filtering. */
+    var listEl   = document.getElementById('pol-pick-list');
+    var searchEl = document.getElementById('pol-pick-search');
+    var saveBtn  = document.getElementById('pol-pick-save');
+    var selectedId = current ? current.id : null;
+
+    function bindRowClicks() {
+      Array.prototype.slice.call(listEl.querySelectorAll('.policy-pick')).forEach(function (row) {
+        row.addEventListener('click', function () {
+          selectedId = row.getAttribute('data-pick');
+          Array.prototype.slice.call(listEl.querySelectorAll('.policy-pick')).forEach(function (r) { r.classList.remove('is-selected'); });
+          row.classList.add('is-selected');
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = ''; saveBtn.style.cursor = ''; }
+        });
+      });
+    }
+    bindRowClicks();
+
+    if (searchEl) {
+      searchEl.addEventListener('input', function () {
+        listEl.innerHTML = rowsHtml(searchEl.value);
+        bindRowClicks();
+        if (window.lucide) lucide.createIcons();
+      });
+    }
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        if (!selectedId) return;
+        selectPolicyForControl(controlId, selectedId);
+      });
+    }
+  }
+
+  function selectPolicyForControl(controlId, policyId) {
+    DATA.linkControlToPolicy(controlId, policyId);
+    UI.closeModal();
+    var nav = document.querySelector('[data-route="controls"]');
+    if (nav) nav.click();
+  }
+
   return {
     dashboard: dashboard, radar: radar, regulationDetail: regulationDetail, drift: drift,
     gaps: gaps, actions: actions, evidence: evidence, controls: controls, team: team,
     sources: sources, about: about, mountCharts: mountCharts,
-    openAddSourceModal: openAddSourceModal, verifyAddSource: verifyAddSource, saveAddSource: saveAddSource
+    openAddSourceModal: openAddSourceModal, verifyAddSource: verifyAddSource, saveAddSource: saveAddSource,
+    /* ---------- Policies ---------- */
+    policies:              policies,
+    setPolicyFilter:       setPolicyFilter,
+    openUploadPolicyModal: openUploadPolicyModal,
+    handlePolicyFile:      handlePolicyFile,
+    savePolicyUpload:      savePolicyUpload,
+    openPolicyPickerModal: openPolicyPickerModal,
+    selectPolicyForControl:selectPolicyForControl,
+    openPolicyDocument:    openPolicyDocument,
+    deletePolicy:          deletePolicy
   };
 })();

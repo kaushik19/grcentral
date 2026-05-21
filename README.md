@@ -8,8 +8,9 @@
 
 GRCentral watches every official regulatory source (EUR-Lex, EDPB, ENISA,
 NIST, CISA, CERT-In, ICO, OWASP, CIS), detects changes at the article / ELI
-level, maps them to your internal controls, quantifies a **Risk Drift Score**
-over time, and recommends preventive actions with owners and SLAs.
+level, maps them to your **internal policies** and **technical controls**,
+quantifies a **Risk Drift Score** over time, and recommends preventive
+actions with owners and SLAs.
 
 > Pure HTML + CSS + vanilla JS. No build step. Open `index.html` directly,
 > run `npm run dev` for a local server, or deploy the folder to Vercel —
@@ -25,10 +26,11 @@ over time, and recommends preventive actions with owners and SLAs.
 4. [Solution Architect view](#4-solution-architect-view)
 5. [Risk Drift formula](#5-risk-drift-formula)
 6. [How to add a new regulatory source](#6-how-to-add-a-new-regulatory-source)
-7. [Tests](#7-tests)
-8. [Push to GitHub](#8-push-to-github)
-9. [Deploy to Vercel](#9-deploy-to-vercel)
-10. [Roadmap](#10-roadmap)
+7. [Internal Policies & uploads](#7-internal-policies--uploads)
+8. [Tests](#8-tests)
+9. [Push to GitHub](#9-push-to-github)
+10. [Deploy to Vercel](#10-deploy-to-vercel)
+11. [Roadmap](#11-roadmap)
 
 ---
 
@@ -66,16 +68,21 @@ grcentral/
 ├── assets/
 │   ├── css/styles.css          # black + babcom-orange theme, Montserrat
 │   └── js/
-│       ├── data.js             # mock dataset: 11 regs, 11 sources, 7 personas, etc.
+│       ├── data.js             # mock dataset: 11 regs, 11 sources, 7 personas,
+│       │                       #   12 controls, 6 seeded policies + localStorage
+│       │                       #   helpers for user-uploaded policies & control links
 │       ├── risk-engine.js      # the Risk Drift formula
-│       ├── components.js       # reusable UI fragments
-│       ├── views.js            # one renderer per route + Add-Source modal
+│       ├── components.js       # reusable UI fragments + htmlEscape / safeUrl
+│       ├── views.js            # one renderer per route + Add-Source modal +
+│       │                       #   Upload-Policy modal + Policy-Picker modal
 │       └── app.js              # router + persona switcher + bootstrap
 └── .tests/
     ├── server.js               # tiny no-cache static file server
-    ├── e2e.js                  # 28-check end-to-end suite
+    ├── e2e.js                  # 29-check end-to-end suite
     ├── ux-check.js             # 28-check UX-round suite
     ├── verifier-check.js       # 19-check Add-Source verifier suite
+    ├── security-check.js       # 45-check XSS + headers suite
+    ├── policies-check.js       # 66-check internal-policies suite
     └── http-check.js           # 10-check HTTP smoke test
 ```
 
@@ -95,7 +102,8 @@ primary, Montserrat 300–900, subtle radial glow, glass-card surfaces.
 | `drift`                | Risk Drift            | 90-day per-regulation trend, formula card, per-component breakdown table            |
 | `gaps`                 | Compliance Gaps       | Risk register with severity / SLA                                                   |
 | `actions`              | Preventive Actions    | Kanban (Planned / In progress / Done) with owners and effort                        |
-| `controls`             | Controls Library      | Controls mapped to frameworks, with maturity and drift bars                         |
+| `controls`             | Controls Library      | Controls mapped to frameworks + **Linked policy** chip per card + change/link affordance |
+| `policies`             | Internal Policies     | 6 seeded policies + **Upload policy** flow (PDF/MD/HTML/TXT up to 3 MB); status + source filters; per-card open/delete |
 | `evidence`             | Evidence Vault        | Freshness tracking — feeds the Evidence-Aging factor of the formula                 |
 | `sources`              | Regulatory Sources    | All 11 feeds with format, polling, ingestion, doc count + **Add source** flow      |
 | `team`                 | Team                  | 7 personas: Aarav Mehta (CCO), Priya Sharma, Rohan Iyer, Ananya Reddy, Vikram Singh, Kavya Nair, Aditya Joshi |
@@ -173,9 +181,16 @@ changes is **modified**, new article IDs are **added**, missing ones are
 every consolidated version.
 
 ### Logical data model
-`Regulation`, `Article`, `Change`, `Control`, `Policy`, `Evidence`,
+`Regulation`, `Article`, `Change`, `Control`, **`InternalPolicy`** (seeded
+or user-uploaded, with `mapsToRegulations[]` + `implementedByControls[]`),
+`ControlPolicyMap(controlId → policyId)` (user overrides), `Evidence`,
 `RiskItem`, `Action`, `Persona/User`, `BusinessUnit`, `SourceFeed`,
 `DriftSnapshot(date, components, score)`.
+
+A **Regulation** says *what* the law requires. An **InternalPolicy** says
+*how* the company complies. A **Control** is the technical implementation.
+Each layer links to the one above so a regulatory change can be traced
+through to every affected policy, control, evidence item and risk.
 
 ### Production architecture (not built in this prototype)
 - Polling workers per `SourceFeed` (Python + Celery / Temporal).
@@ -250,9 +265,104 @@ the grid re-renders with the new card.
 
 ---
 
-## 7. Tests
+## 7. Internal Policies & uploads
 
-The repo ships with four pure-Node test files. Run them all with:
+GRCentral models **internal policies** as a first-class entity — the bridge
+between an external regulation ("GDPR Article 32") and a technical control
+("encryption at rest on prod datastores"). The app ships with 6 realistic
+seeded policies and lets users add more by uploading a file.
+
+### Seeded policies
+
+| Policy                                  | Status     | Maps to                                  | Owner          |
+|-----------------------------------------|------------|------------------------------------------|----------------|
+| Data Protection Policy v3.2             | Published  | GDPR, EDPB Op. 4/2026                   | Ananya Reddy   |
+| Acceptable Use Policy v2.4              | Published  | *(org-wide)*                            | Vikram Singh   |
+| Encryption Standard v4.1                | Published  | GDPR Art.32, EDPB Op. 4/2026, NIS2      | Vikram Singh   |
+| Responsible AI Use Policy v1.3          | Published  | AI Act (Art. 5, 9, 10, 53)              | Priya Sharma   |
+| Incident Response Plan v5.0             | Published  | NIS2, DORA, CERT-In                     | Vikram Singh   |
+| Third-Party Risk Management Policy v2.1 | **Draft**  | DORA, NIS2, CRA                         | Rohan Iyer     |
+
+### The Policies view (`/policies`)
+
+- **KPI strip:** total · due in ≤90 days · overdue · attestation completion %.
+- **Filters:** status (`all` / `published` / `draft` / `retired`) and source
+  (`all` / `seeded` / `uploaded`).
+- **Cards** show: status badge, format pill, owner + approver, regulations
+  covered, controls implementing it, review-due chip, attestation %,
+  and `Open` (opens the document in a new tab) + `Delete` (uploaded only).
+
+### Upload a new policy
+
+**Policies → Upload policy**. The modal accepts:
+
+| Field                | Required | Notes                                                      |
+|----------------------|:--------:|------------------------------------------------------------|
+| File                 |    ◑    | PDF · Markdown · HTML · TXT, ≤ 3 MB (or use external URL) |
+| Title                |    ✓    | Free text                                                  |
+| Version              |          | Defaults to `1.0`                                          |
+| Owner, Approver      |          | Picked from the 7 personas                                 |
+| Effective / Review   |          | Date pickers                                               |
+| Status               |          | `Published` or `Draft`                                     |
+| External URL         |    ◑    | Required if no file (e.g. wiki link); validated by `safeUrl()` |
+| Description          |          | Free text                                                  |
+| Maps to regulations  |          | Multi-select against all 11 seeded regulations             |
+| Implemented by controls |       | Multi-select against all 12 seeded controls — selected controls get auto-linked to this new policy |
+
+The file is read with `FileReader.readAsDataURL()`, stripped to base64, and
+persisted to `localStorage` under `grc.policyFile.<id>` (≤ 3 MB cap). The
+metadata lives at `grc.userPolicies`. Reopening the app reconstitutes both.
+**Nothing is uploaded over the network — it all stays in the browser.**
+
+### Link a policy from Controls
+
+**Controls → any card → Link policy / Change**. Opens a reusable picker
+that lists every policy (seeded + uploaded), with search, radio-card
+selection, and a *Clear link* option that falls back to the inferred
+mapping (each seeded policy declares its `implementedByControls[]`).
+
+Explicit user choices are persisted to `localStorage` under
+`grc.controlPolicyMap`, and override the inferred mapping.
+
+### Data API (`DATA.*`)
+
+| Method                                         | What it does                                                  |
+|------------------------------------------------|---------------------------------------------------------------|
+| `DATA.getAllPolicies()`                        | Seeded + user-uploaded (newest user uploads first)            |
+| `DATA.getPolicyById(id)`                       | Lookup by id                                                  |
+| `DATA.addUserPolicy(meta, base64?, mimeType?)` | Validates + persists; returns `{ok, policy}` or `{ok:false, error}` |
+| `DATA.deleteUserPolicy(id)`                    | Removes policy, file payload, and all control links pointing at it |
+| `DATA.getPolicyFile(id)`                       | Returns `{mimeType, base64}` or `null`                        |
+| `DATA.linkControlToPolicy(controlId, policyId)`| Sets / clears the explicit mapping                            |
+| `DATA.getPolicyForControl(controlId)`          | Explicit map → falls back to inferred → `null`                |
+| `DATA.MAX_POLICY_FILE_BYTES`                   | `3 * 1024 * 1024` — the in-browser cap                        |
+
+### Security posture of the upload flow
+
+- **MIME + extension whitelist:** `.pdf | .md | .markdown | .html | .htm | .txt`
+  matched against `application/pdf | text/markdown | text/html | text/plain`.
+- **Hard size cap:** 3 MB (before base64 inflation).
+- **File content is never injected into the DOM.** It's stored as base64,
+  reconstituted as a `Blob`, and opened via `URL.createObjectURL()` +
+  `window.open(url, '_blank', 'noopener,noreferrer')`. The blob URL is
+  revoked after 60 seconds.
+- **Every user-controlled string** (title, description, fileName, etc.)
+  goes through `UI.htmlEscape()` before being interpolated into HTML.
+- **External-URL field** is validated by `UI.safeUrl()`, which rejects
+  `javascript:`, `data:`, `vbscript:`, `file:`, `about:`, `chrome://`,
+  `ftp://` and anything that doesn't parse via the `URL` constructor.
+- **CSP** stays at `object-src 'none'` and `frame-ancestors 'none'`; we
+  don't iframe the document — we open it in a new tab.
+- The dedicated `.tests/policies-check.js` suite includes an XSS round
+  that fires `<img src=x onerror=>` and `"><script>` payloads into every
+  uploaded-policy field and asserts the rendered Policies view and the
+  Picker view produce zero raw dangerous tags and zero verbatim leaks.
+
+---
+
+## 8. Tests
+
+The repo ships with six pure-Node test suites. Run them all with:
 
 ```bash
 npm test
@@ -262,16 +372,18 @@ Or individually:
 
 | Command                              | Suite                  | Checks                                                                                          |
 |--------------------------------------|------------------------|------------------------------------------------------------------------------------------------|
-| `node .tests/e2e.js`                 | End-to-end             | Every JS module loads, dataset shape, Risk Drift formula, all 12 views render, chart mounting   |
+| `node .tests/e2e.js`                 | End-to-end             | Every JS module loads, dataset shape, Risk Drift formula, all **13** views render, chart mounting |
 | `node .tests/ux-check.js`            | UX round               | CIS healed, source enrichment, sources view CTA, chart beautification, Add-Source wiring        |
 | `node .tests/verifier-check.js`      | Add-Source verifier    | URL canonicaliser, simulator accepts / rejects, canonical-URL propagation                       |
+| `node .tests/security-check.js`      | Security & XSS         | `htmlEscape` / `safeUrl`, OWASP XSS payloads, `rel="noopener noreferrer"`, CSP + Vercel headers |
+| `node .tests/policies-check.js`      | Internal policies      | Seeded data, `addUserPolicy` validation, link/unlink, render of policies view + upload modal + picker, XSS round |
 | `node .tests/http-check.js`          | HTTP smoke             | Every asset 200s with the right MIME, 404 path returns 404                                     |
 
-Current state: **85 / 85 tests passing.**
+Current state: **187 / 187 tests passing** (29 + 28 + 19 + 45 + 66, plus the HTTP smoke when the server is running).
 
 ---
 
-## 8. Push to GitHub
+## 9. Push to GitHub
 
 The repo isn't initialised yet. From the project root:
 
@@ -295,7 +407,7 @@ or stays as a normal GitHub repo.
 
 ---
 
-## 9. Deploy to Vercel
+## 10. Deploy to Vercel
 
 GRCentral is 100% static — it deploys to Vercel with **zero build step**.
 
@@ -317,8 +429,12 @@ What Vercel will detect:
 The included `vercel.json` already configures:
 - Correct MIME for `.js` and `.css`.
 - Light caching (`max-age=300, must-revalidate`) for static assets.
-- Security headers (`X-Content-Type-Options`, `Referrer-Policy`,
-  `Permissions-Policy`).
+- Security headers: `Content-Security-Policy`, `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`, `Permissions-Policy`,
+  `Strict-Transport-Security` with `preload`,
+  `Cross-Origin-Opener-Policy: same-origin`,
+  `Cross-Origin-Resource-Policy: same-origin`.
 
 ### Option B — Vercel dashboard
 
@@ -363,15 +479,19 @@ and `Cache-Control: public, max-age=300, must-revalidate`.
 
 ---
 
-## 10. Roadmap
+## 11. Roadmap
 
 - Real EUR-Lex SPARQL connector + Akoma Ntoso XML parser
 - LLM-assisted obligation extraction and auto-mapping to ISO 27001 / NIST CSF
 - Multi-tenant + SSO (SAML / OIDC)
 - Jira / ServiceNow / Slack action dispatch
 - Board-ready PDF export
-- Persistent storage for user-added sources (currently in-memory only)
-- Real verification step that actually fetches the URL through a serverless function
+- Server-side persistence for user-added sources and uploaded policies
+  (currently in browser `localStorage` only — files capped at 3 MB)
+- Antivirus scan + PII detection in the policy-upload pipeline before persistence
+- Policy diffing across versions (same engine as the article-level regulation diff)
+- Bulk attestation campaigns + reminders for policies due for review
+- Real verification step that actually fetches the source URL through a serverless function
 
 ---
 

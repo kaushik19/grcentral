@@ -18,6 +18,7 @@
     { id: 'gaps',       label: 'Compliance Gaps',   icon: 'alert-triangle' },
     { id: 'actions',    label: 'Preventive Actions',icon: 'check-square' },
     { id: 'controls',   label: 'Controls',          icon: 'shield' },
+    { id: 'policies',   label: 'Internal Policies', icon: 'file-text' },
     { id: 'evidence',   label: 'Evidence Vault',    icon: 'archive' },
 
     { section: 'Configuration' },
@@ -97,6 +98,7 @@
     else if (r === 'gaps')              { html = Views.gaps();               section = 'Compliance'; page = 'Compliance Gaps'; }
     else if (r === 'actions')           { html = Views.actions();            section = 'Compliance'; page = 'Preventive Actions'; }
     else if (r === 'controls')          { html = Views.controls();           section = 'Compliance'; page = 'Controls'; }
+    else if (r === 'policies')          { html = Views.policies();           section = 'Compliance'; page = 'Internal Policies'; }
     else if (r === 'evidence')          { html = Views.evidence();           section = 'Compliance'; page = 'Evidence Vault'; }
     else if (r === 'sources')           { html = Views.sources();            section = 'Configuration'; page = 'Sources'; }
     else if (r === 'team')              { html = Views.team();               section = 'Configuration'; page = 'Team'; }
@@ -179,9 +181,11 @@
           articleHits.push({ reg: r, art: a });
         }
       }));
+      /* SECURITY: user query is escaped before being rendered into the modal title. */
+      const qEsc = UI.htmlEscape(q);
       UI.openModal(`
         <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-lg">Search · "${q}"</h3>
+          <h3 class="font-bold text-lg">Search · "${qEsc}"</h3>
           <button onclick="UI.closeModal()" class="text-white/40 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
         <div class="space-y-5">

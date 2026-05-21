@@ -380,6 +380,265 @@ window.DATA = (() => {
     { id: 'A-2010', riskId: 'R-010', title: 'Add 5 new CDP processing activities to RoPA',                          ownerId: 'ananya', dueInDays: 14, status: 'planned',     effort: 'S' }
   ];
 
+  /* --------------------- Internal policies (seeded) ----------------------
+     The company's OWN policy documents. A regulation says WHAT, a policy says
+     HOW we comply, and a control is the technical implementation.
+     `source: 'seeded'`  → ships with GRCentral
+     `source: 'uploaded'` → user-uploaded at runtime (lives in localStorage)
+     ---------------------------------------------------------------------- */
+  const seededPolicies = [
+    {
+      id: 'pol-data-protection',
+      title: 'Data Protection Policy',
+      version: '3.2',
+      status: 'published',
+      ownerId: 'ananya',
+      approverId: 'aarav',
+      effectiveDate: '2025-09-01',
+      nextReviewDate: '2026-09-01',
+      source: 'seeded',
+      format: 'pdf',
+      documentUrl: 'https://gdpr.eu/',                              // illustrative external link
+      fileName: 'data-protection-policy-v3.2.pdf',
+      fileSize: 482103,
+      uploadedAt: null,
+      description: 'Defines lawful basis, data minimisation, retention windows and DSR procedures for all personal data processing across Babcom.',
+      mapsToRegulations: ['reg-gdpr', 'reg-edpb-opn-4-2026'],
+      mapsToArticles: ['gdpr-5', 'gdpr-6', 'gdpr-25', 'gdpr-30'],
+      implementedByControls: ['C-DR-040', 'C-DR-041'],
+      attestations: { required: 1200, completed: 1145 },
+      tags: ['privacy', 'mandatory']
+    },
+    {
+      id: 'pol-acceptable-use',
+      title: 'Acceptable Use Policy',
+      version: '2.4',
+      status: 'published',
+      ownerId: 'vikram',
+      approverId: 'aarav',
+      effectiveDate: '2025-04-15',
+      nextReviewDate: '2026-04-15',
+      source: 'seeded',
+      format: 'pdf',
+      documentUrl: 'https://owasp.org/',
+      fileName: 'acceptable-use-v2.4.pdf',
+      fileSize: 198432,
+      uploadedAt: null,
+      description: 'Governs employee use of corporate systems, BYOD, removable media, generative-AI tools and remote-access conduct.',
+      mapsToRegulations: [],
+      mapsToArticles: [],
+      implementedByControls: ['C-AC-001'],
+      attestations: { required: 1200, completed: 1199 },
+      tags: ['mandatory', 'org-wide']
+    },
+    {
+      id: 'pol-encryption-standard',
+      title: 'Encryption Standard',
+      version: '4.1',
+      status: 'published',
+      ownerId: 'vikram',
+      approverId: 'aarav',
+      effectiveDate: '2025-11-01',
+      nextReviewDate: '2026-07-01',                                 // due in <90d — surfaces in KPI
+      source: 'seeded',
+      format: 'pdf',
+      documentUrl: 'https://www.edpb.europa.eu/',
+      fileName: 'encryption-standard-v4.1.pdf',
+      fileSize: 612844,
+      uploadedAt: null,
+      description: 'Approved ciphers, key-rotation cadences and TLS profiles. Mandates encryption-at-rest and in-transit for all high-risk processing (EDPB Op. 4/2026).',
+      mapsToRegulations: ['reg-gdpr', 'reg-edpb-opn-4-2026', 'reg-nis2'],
+      mapsToArticles: ['gdpr-32'],
+      implementedByControls: ['C-DP-014', 'C-DP-015'],
+      attestations: { required: 320, completed: 280 },
+      tags: ['security', 'technical']
+    },
+    {
+      id: 'pol-ai-use',
+      title: 'Responsible AI Use Policy',
+      version: '1.3',
+      status: 'published',
+      ownerId: 'priya',
+      approverId: 'kavya',
+      effectiveDate: '2026-02-12',
+      nextReviewDate: '2026-08-12',                                 // due ~90d
+      source: 'seeded',
+      format: 'markdown',
+      documentUrl: 'https://digital-strategy.ec.europa.eu/',
+      fileName: 'responsible-ai-use-v1.3.md',
+      fileSize: 84210,
+      uploadedAt: null,
+      description: 'Covers AI risk-tiering per AI Act, prohibited use cases, GPAI documentation requirements and human-in-the-loop overrides.',
+      mapsToRegulations: ['reg-ai-act'],
+      mapsToArticles: ['art-5', 'art-9', 'art-10', 'art-53'],
+      implementedByControls: ['C-AI-002', 'C-AI-003', 'C-AI-004'],
+      attestations: { required: 240, completed: 162 },
+      tags: ['ai', 'mandatory']
+    },
+    {
+      id: 'pol-incident-response',
+      title: 'Incident Response Plan',
+      version: '5.0',
+      status: 'published',
+      ownerId: 'vikram',
+      approverId: 'aarav',
+      effectiveDate: '2025-10-01',
+      nextReviewDate: '2026-10-01',
+      source: 'seeded',
+      format: 'pdf',
+      documentUrl: 'https://www.enisa.europa.eu/',
+      fileName: 'incident-response-plan-v5.0.pdf',
+      fileSize: 1024560,
+      uploadedAt: null,
+      description: 'End-to-end runbook: detection, classification (DORA 4-hour SLA), escalation, NIS2 24/72-hour notifications, CERT-In 6-hour reporting and post-incident review.',
+      mapsToRegulations: ['reg-nis2', 'reg-dora', 'reg-certin-2024'],
+      mapsToArticles: ['nis2-23', 'dora-17'],
+      implementedByControls: ['C-IR-007', 'C-LR-050'],
+      attestations: { required: 110, completed: 110 },
+      tags: ['security', 'operational']
+    },
+    {
+      id: 'pol-third-party-risk',
+      title: 'Third-Party Risk Management Policy',
+      version: '2.1',
+      status: 'draft',                                              // intentionally not yet approved
+      ownerId: 'rohan',
+      approverId: 'aarav',
+      effectiveDate: null,
+      nextReviewDate: '2026-06-30',
+      source: 'seeded',
+      format: 'pdf',
+      documentUrl: 'https://www.cisecurity.org/cis-benchmarks',
+      fileName: 'third-party-risk-v2.1-DRAFT.pdf',
+      fileSize: 348221,
+      uploadedAt: null,
+      description: 'Vendor due-diligence, ICT subprocessor register (DORA Art.28-30), SBOM expectations (CRA, NIS2) and contractual minima for critical-or-important suppliers.',
+      mapsToRegulations: ['reg-dora', 'reg-nis2', 'reg-cra'],
+      mapsToArticles: ['dora-28', 'dora-30', 'nis2-21'],
+      implementedByControls: ['C-TP-022', 'C-SC-031'],
+      attestations: { required: 80, completed: 0 },
+      tags: ['vendor', 'draft']
+    }
+  ];
+
+  /* --------------------- Persistence shim (localStorage) -----------------
+     The test sandbox has no `localStorage`; fall back to an in-memory Map so
+     the same code path works in both browser and Node-VM contexts. */
+  const _store = (typeof localStorage !== 'undefined') ? localStorage : (() => {
+    const m = new Map();
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+      removeItem: (k) => m.delete(k)
+    };
+  })();
+
+  const K_USER_POLICIES = 'grc.userPolicies';
+  const K_CTRL_MAP      = 'grc.controlPolicyMap';
+  const K_FILE_PREFIX   = 'grc.policyFile.';
+  const MAX_FILE_BYTES  = 3 * 1024 * 1024;                          // 3 MB cap per upload
+
+  function _loadJSON(key, fallback) {
+    try { const raw = _store.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (_) { return fallback; }
+  }
+  function _saveJSON(key, value) {
+    try { _store.setItem(key, JSON.stringify(value)); return true; }
+    catch (_) { return false; }
+  }
+
+  let userPolicies     = _loadJSON(K_USER_POLICIES, []);
+  let controlPolicyMap = _loadJSON(K_CTRL_MAP, {});
+
+  function getAllPolicies() {
+    /* Seeded first (immutable), then user uploads (newest first). */
+    return seededPolicies.concat(userPolicies.slice().reverse());
+  }
+  function getPolicyById(id) {
+    return getAllPolicies().find(p => p.id === id) || null;
+  }
+  function addUserPolicy(meta, fileBase64, mimeType) {
+    /* Validate metadata. */
+    if (!meta || !meta.title || !meta.title.trim()) {
+      return { ok: false, error: 'Title is required' };
+    }
+    const allowedFormats = ['pdf', 'markdown', 'html', 'text', 'link'];
+    const fmt = (meta.format || 'pdf').toLowerCase();
+    if (allowedFormats.indexOf(fmt) === -1) {
+      return { ok: false, error: 'Unsupported format (allowed: ' + allowedFormats.join(', ') + ')' };
+    }
+    /* Generate id and persist file content (if any). */
+    const id = 'pol-usr-' + Math.random().toString(36).slice(2, 8);
+    let stored = false;
+    if (fileBase64 && fmt !== 'link') {
+      const bytes = Math.ceil((fileBase64.length * 3) / 4);
+      if (bytes > MAX_FILE_BYTES) {
+        return { ok: false, error: 'File too large (max ' + (MAX_FILE_BYTES / 1024 / 1024) + ' MB for in-browser storage)' };
+      }
+      stored = _saveJSON(K_FILE_PREFIX + id, { mimeType: mimeType || 'application/octet-stream', base64: fileBase64 });
+    }
+    const policy = {
+      id: id,
+      title:           String(meta.title).trim(),
+      version:         String(meta.version || '1.0').trim(),
+      status:          meta.status === 'draft' ? 'draft' : 'published',
+      ownerId:         meta.ownerId    || null,
+      approverId:      meta.approverId || null,
+      effectiveDate:   meta.effectiveDate   || new Date().toISOString().slice(0, 10),
+      nextReviewDate:  meta.nextReviewDate  || null,
+      source:          'uploaded',
+      format:          fmt,
+      documentUrl:     fmt === 'link' ? (meta.documentUrl || null) : null,
+      fileName:        meta.fileName || null,
+      fileSize:        meta.fileSize || 0,
+      uploadedAt:      new Date().toISOString(),
+      description:     String(meta.description || '').trim(),
+      mapsToRegulations:    Array.isArray(meta.mapsToRegulations)    ? meta.mapsToRegulations.slice()    : [],
+      mapsToArticles:       Array.isArray(meta.mapsToArticles)       ? meta.mapsToArticles.slice()       : [],
+      implementedByControls:Array.isArray(meta.implementedByControls)? meta.implementedByControls.slice(): [],
+      attestations:    { required: 0, completed: 0 },
+      tags:            Array.isArray(meta.tags) ? meta.tags.slice() : [],
+      hasFile:         stored
+    };
+    userPolicies.push(policy);
+    _saveJSON(K_USER_POLICIES, userPolicies);
+    return { ok: true, policy: policy };
+  }
+  function deleteUserPolicy(id) {
+    const before = userPolicies.length;
+    userPolicies = userPolicies.filter(p => p.id !== id);
+    _saveJSON(K_USER_POLICIES, userPolicies);
+    _store.removeItem(K_FILE_PREFIX + id);
+    /* Unlink any controls pointing at this policy. */
+    let changed = false;
+    Object.keys(controlPolicyMap).forEach(k => {
+      if (controlPolicyMap[k] === id) { delete controlPolicyMap[k]; changed = true; }
+    });
+    if (changed) _saveJSON(K_CTRL_MAP, controlPolicyMap);
+    return userPolicies.length < before;
+  }
+  function getPolicyFile(id) {
+    return _loadJSON(K_FILE_PREFIX + id, null);
+  }
+  function linkControlToPolicy(controlId, policyId) {
+    if (!controlId) return false;
+    if (policyId) controlPolicyMap[controlId] = policyId;
+    else delete controlPolicyMap[controlId];
+    return _saveJSON(K_CTRL_MAP, controlPolicyMap);
+  }
+  function getPolicyForControl(controlId) {
+    /* Explicit user mapping wins; otherwise infer from seeded
+       `implementedByControls` arrays. */
+    const explicitId = controlPolicyMap[controlId];
+    if (explicitId) {
+      const p = getPolicyById(explicitId);
+      if (p) return p;
+    }
+    return getAllPolicies().find(p =>
+      Array.isArray(p.implementedByControls) && p.implementedByControls.indexOf(controlId) !== -1
+    ) || null;
+  }
+
   /* ------------------ Risk drift history (90 days) ----------------------- */
   /* Build a deterministic but interesting 90-day series per regulation.
      Seeded sin + drift, plus a step-up at the recent change date.          */
@@ -420,6 +679,18 @@ window.DATA = (() => {
   return {
     sources, personas, businessUnits, regulations,
     controls, changes, risks, evidence, actions,
-    driftHistoryByReg, indexes
+    driftHistoryByReg, indexes,
+    /* ---------- Internal Policies (seeded + user-uploaded) ---------- */
+    seededPolicies: seededPolicies,
+    get userPolicies()     { return userPolicies; },
+    get controlPolicyMap() { return controlPolicyMap; },
+    getAllPolicies:        getAllPolicies,
+    getPolicyById:         getPolicyById,
+    addUserPolicy:         addUserPolicy,
+    deleteUserPolicy:      deleteUserPolicy,
+    getPolicyFile:         getPolicyFile,
+    linkControlToPolicy:   linkControlToPolicy,
+    getPolicyForControl:   getPolicyForControl,
+    MAX_POLICY_FILE_BYTES: MAX_FILE_BYTES
   };
 })();
