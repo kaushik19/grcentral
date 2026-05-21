@@ -539,7 +539,7 @@ window.Views = (() => {
       return `
         <div class="article-block diff-modify">
           <h5>${a.num} · ${a.title} <span class="badge badge-elevated ml-2">MODIFIED</span></h5>
-          <div class="text-[12px] text-white/45 mb-1">— previous</div>
+          <div class="text-[12px] text-white/45 mb-1">previous:</div>
           <div class="text-white/55 line-through">${a.before}</div>
           <div class="text-[12px] text-white/45 mt-2 mb-1">+ current</div>
           <div>${a.after}</div>
@@ -761,7 +761,7 @@ DriftScore =<br/>
       <div class="flex items-end justify-between mb-6">
         <div>
           <h2 class="text-2xl font-extrabold tracking-tight">Evidence Vault</h2>
-          <p class="text-sm text-white/55 mt-1">Control evidence with freshness tracking — feeds the Evidence Aging factor in Risk Drift</p>
+          <p class="text-sm text-white/55 mt-1">Control evidence with freshness tracking. Feeds the Evidence Aging factor in Risk Drift.</p>
         </div>
       </div>
 
@@ -832,7 +832,7 @@ DriftScore =<br/>
             ? `<div class="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-2">
                  <div class="min-w-0">
                    <div class="kpi-label">Linked policy</div>
-                   <div class="text-[12px] font-semibold truncate">${UI.htmlEscape(linkedPolicy.title)} <span class="text-white/40 font-normal">· v${UI.htmlEscape(linkedPolicy.version)}</span></div>
+                   <button class="text-[12px] font-semibold truncate text-left text-babcom-200 hover:text-babcom-100 transition" onclick="Views.openPolicyViewer('${UI.htmlEscape(linkedPolicy.id)}')" title="Open policy in viewer">${UI.htmlEscape(linkedPolicy.title)} <span class="text-white/40 font-normal">· v${UI.htmlEscape(linkedPolicy.version)}</span></button>
                  </div>
                  <button class="btn btn-ghost text-[11px] py-1.5" onclick="Views.openPolicyPickerModal('${UI.htmlEscape(c.id)}')">
                    <i data-lucide="link" class="w-3 h-3"></i> Change
@@ -1229,7 +1229,7 @@ DriftScore =<br/>
           '<div class="flex items-center justify-between"><span class="text-white/45">Detected format</span><span class="text-white/85 font-semibold">' + UI.htmlEscape(result.detected) + '</span></div>' +
           '<div class="flex items-center justify-between"><span class="text-white/45">Documents found</span><span class="text-white/85 font-semibold">' + result.docs.toLocaleString() + '</span></div>' +
           '<div class="flex items-center justify-between"><span class="text-white/45">Sample payload</span><span class="text-white/85 font-semibold">' + result.sampleSize + ' KB</span></div>' +
-          '<div class="flex items-center gap-2 text-accent-emerald font-semibold pt-2"><i data-lucide="shield-check" class="w-4 h-4"></i>Source verified — ready to save</div>' +
+          '<div class="flex items-center gap-2 text-accent-emerald font-semibold pt-2"><i data-lucide="shield-check" class="w-4 h-4"></i>Source verified, ready to save.</div>' +
         '</div>'
       );
       var st2 = document.getElementById('verify-state'); if (st2) { st2.className = 'badge badge-stable'; st2.textContent = 'Verified'; }
@@ -1280,7 +1280,7 @@ DriftScore =<br/>
       <div class="flex items-end justify-between mb-6">
         <div>
           <h2 class="text-2xl font-extrabold tracking-tight">About GRCentral</h2>
-          <p class="text-sm text-white/55 mt-1">The product brief — built as Product Owner, designed as Solution Architect</p>
+          <p class="text-sm text-white/55 mt-1">Notes on what this is, why it exists, and how the pieces fit together.</p>
         </div>
       </div>
 
@@ -1728,7 +1728,8 @@ DriftScore = (<br/>
             '<div class="text-white/40 text-[10px] truncate">' + UI.htmlEscape(owner ? owner.role : '—') + (approver ? ' · approved by ' + UI.htmlEscape(approver.name.split(' ')[0]) : '') + '</div>',
           '</div>',
           '<div class="ml-auto flex items-center gap-1">',
-            '<button class="btn btn-ghost text-[11px] py-1.5" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3 h-3"></i> Open</button>',
+            '<button class="btn btn-primary text-[11px] py-1.5" onclick="Views.openPolicyViewer(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="eye" class="w-3 h-3"></i> View</button>',
+            '<button class="btn btn-ghost text-[11px] py-1.5" title="Open in new tab" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3 h-3"></i></button>',
             p.source === 'uploaded'
               ? '<button class="btn btn-ghost text-[11px] py-1.5" title="Delete uploaded policy" onclick="Views.deletePolicy(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="trash-2" class="w-3 h-3"></i></button>'
               : '',
@@ -1836,13 +1837,13 @@ DriftScore = (<br/>
           '<div class="grid grid-cols-2 gap-3">',
             '<label class="block"><span class="kpi-label">Owner</span>',
               '<select id="pol-owner" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50">',
-                '<option value="">— select —</option>',
+                '<option value="">select…</option>',
                 personasOpts,
               '</select>',
             '</label>',
             '<label class="block"><span class="kpi-label">Approver</span>',
               '<select id="pol-approver" class="mt-1 w-full px-3 py-2 rounded-lg bg-ink-800 border border-white/10 text-sm focus:outline-none focus:border-babcom-500/50">',
-                '<option value="">— select —</option>',
+                '<option value="">select…</option>',
                 personasOpts,
               '</select>',
             '</label>',
@@ -2112,6 +2113,411 @@ DriftScore = (<br/>
     if (nav) nav.click();
   }
 
+  /* ====================================================================== */
+  /*  12.c In-app policy viewer                                              */
+  /* ====================================================================== */
+
+  /* Tiny safe markdown: only handles headings, bold, italics, code, lists,
+     and paragraphs. EVERY token is htmlEscape'd first so we cannot inject
+     raw HTML even from a malicious uploaded .md. */
+  function _renderMarkdown(src) {
+    if (!src) return '';
+    var safe = UI.htmlEscape(String(src));
+    var lines = safe.split(/\r?\n/);
+    var out = [];
+    var inList = false;
+    function closeList() { if (inList) { out.push('</ul>'); inList = false; } }
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      if (/^\s*$/.test(ln))                              { closeList(); continue; }
+      if (/^#{1,6}\s/.test(ln)) {
+        closeList();
+        var depth = ln.match(/^#+/)[0].length;
+        var text = ln.replace(/^#+\s*/, '');
+        out.push('<h' + (depth + 2) + ' class="font-bold mt-4 mb-2 text-white/90">' + text + '</h' + (depth + 2) + '>');
+        continue;
+      }
+      if (/^\s*[-*]\s+/.test(ln)) {
+        if (!inList) { out.push('<ul class="list-disc list-inside space-y-1 my-2 text-white/75">'); inList = true; }
+        out.push('<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>');
+        continue;
+      }
+      closeList();
+      var p = ln
+        .replace(/`([^`]+)`/g,         '<code class="bg-white/5 px-1.5 py-0.5 rounded text-[12px] text-babcom-200">$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g,   '<strong class="text-white">$1</strong>')
+        .replace(/\*([^*]+)\*/g,       '<em>$1</em>');
+      out.push('<p class="my-2 text-white/75 leading-relaxed">' + p + '</p>');
+    }
+    closeList();
+    return out.join('\n');
+  }
+
+  /* Decode base64 (FileReader output) -> Blob. */
+  function _b64ToBlob(b64, mimeType) {
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+  }
+
+  /* Decode base64 -> UTF-8 string (best-effort; text policies only). */
+  function _b64ToText(b64) {
+    try {
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder('utf-8').decode(bytes);
+    } catch (_) { return ''; }
+  }
+
+  /* Track blob URLs so we can revoke them when the modal closes. */
+  var _viewerBlobUrls = [];
+  function _newBlobUrl(blob) {
+    var url = URL.createObjectURL(blob);
+    _viewerBlobUrls.push(url);
+    return url;
+  }
+  function _revokeViewerBlobs() {
+    _viewerBlobUrls.splice(0).forEach(function (u) { try { URL.revokeObjectURL(u); } catch (_) {} });
+  }
+
+  function openPolicyViewer(policyId, opts) {
+    opts = opts || {};
+    _revokeViewerBlobs();
+    var p = DATA.getPolicyById(policyId);
+    if (!p) return;
+    var owner    = p.ownerId    ? DATA.indexes.personas[p.ownerId]    : null;
+    var approver = p.approverId ? DATA.indexes.personas[p.approverId] : null;
+    var regs     = (p.mapsToRegulations || []).map(function (id) { return DATA.indexes.regulations[id]; }).filter(Boolean);
+    var ctrls    = (p.implementedByControls || []).map(function (id) { return DATA.indexes.controls[id]; }).filter(Boolean);
+
+    /* ---- Body content depends on the policy's format + whether it has a file. */
+    var body = '';
+    var isPdf = (p.format === 'pdf') && p.source === 'uploaded' && p.hasFile;
+    var isText = ['markdown', 'html', 'text'].indexOf(p.format) >= 0 && p.source === 'uploaded' && p.hasFile;
+    if (isPdf) {
+      var f = DATA.getPolicyFile(p.id);
+      if (f && f.base64) {
+        var blob = _b64ToBlob(f.base64, f.mimeType);
+        var url  = _newBlobUrl(blob);
+        body = '<div class="rounded-lg overflow-hidden border border-white/5" style="height:60vh">' +
+                 '<iframe src="' + url + '" class="w-full h-full bg-white" sandbox="allow-same-origin"></iframe>' +
+               '</div>';
+      }
+    } else if (isText) {
+      var f2 = DATA.getPolicyFile(p.id);
+      var txt = f2 ? _b64ToText(f2.base64) : '';
+      if (p.format === 'markdown') {
+        body = '<div class="rounded-lg border border-white/5 p-5 bg-black/30 max-h-[60vh] overflow-y-auto text-sm leading-relaxed">' + _renderMarkdown(txt) + '</div>';
+      } else {
+        body = '<pre class="rounded-lg border border-white/5 p-5 bg-black/30 max-h-[60vh] overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-white/80">' + UI.htmlEscape(txt) + '</pre>';
+      }
+    } else if (p.sections && p.sections.length) {
+      /* Seeded policy : render its sections as a clean reading view. */
+      body = '<div class="rounded-lg border border-white/5 bg-black/30 max-h-[60vh] overflow-y-auto">' +
+        p.sections.map(function (s) {
+          var hl = opts.highlightSectionId === s.id ? ' style="background:rgba(255,90,31,0.10);border-color:rgba(255,90,31,0.45)"' : '';
+          var hlBadge = opts.highlightSectionId === s.id
+            ? '<span class="badge badge-elevated ml-2"><span class="badge-dot" style="background:#ff7a3d"></span>NEEDS UPDATE</span>'
+            : '';
+          return '<div id="sec-' + UI.htmlEscape(s.id) + '" class="p-5 border-b border-white/5 last:border-none"' + hl + '>' +
+                   '<div class="flex items-baseline gap-3 mb-2">' +
+                     '<div class="text-[10px] uppercase tracking-widest text-white/40">\u00a7' + UI.htmlEscape(s.num) + '</div>' +
+                     '<h4 class="font-bold text-sm">' + UI.htmlEscape(s.title) + '</h4>' +
+                     hlBadge +
+                   '</div>' +
+                   '<p class="text-[13px] text-white/70 leading-relaxed">' + UI.htmlEscape(s.body) + '</p>' +
+                 '</div>';
+        }).join('') +
+      '</div>';
+    } else {
+      var ext = UI.safeUrl(p.documentUrl);
+      body = '<div class="rounded-lg border border-white/5 p-8 text-center bg-black/30">' +
+               '<i data-lucide="file-search" class="w-8 h-8 mx-auto text-white/30 mb-3"></i>' +
+               '<div class="font-semibold text-sm">No previewable content for this policy.</div>' +
+               '<div class="text-[12px] text-white/45 mt-1">Either no file was uploaded or the format is not previewable here.</div>' +
+               (ext !== '#'
+                 ? '<a href="' + ext + '" target="_blank" rel="noopener noreferrer" class="btn btn-ghost text-xs mt-4 inline-flex"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open external URL</a>'
+                 : '') +
+             '</div>';
+    }
+
+    var hl = opts.highlightSectionId
+      ? '<div class="mt-1 mb-3 rounded-lg border border-babcom-500/40 bg-babcom-500/10 px-3 py-2 text-[12px] text-babcom-200 flex items-center gap-2">' +
+          '<i data-lucide="zap" class="w-3.5 h-3.5"></i>' +
+          'A regulatory change requires updating section \u00a7' + UI.htmlEscape((p.sections || []).find(function (s) { return s.id === opts.highlightSectionId; }) ? p.sections.find(function (s) { return s.id === opts.highlightSectionId; }).num : '?') + '. Jump to it below.' +
+        '</div>'
+      : '';
+
+    var headerHtml = [
+      '<div class="flex items-start justify-between mb-4 gap-3">',
+        '<div class="min-w-0">',
+          '<div class="flex items-center gap-2 mb-1 flex-wrap">',
+            _statusBadge(p.status), _formatBadge(p.format), _sourceBadge(p.source),
+            '<span class="chip">v' + UI.htmlEscape(p.version) + '</span>',
+          '</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">' + UI.htmlEscape(p.title) + '</h3>',
+          '<p class="text-xs text-white/55 mt-1">' + UI.htmlEscape(p.description || '') + '</p>',
+        '</div>',
+        '<button onclick="UI.closeModal(); (' + _revokeViewerBlobs.toString() + ')()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>'
+    ].join('');
+
+    var metaHtml = [
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">',
+        '<div class="rounded-lg border border-white/5 px-3 py-2">',
+          '<div class="kpi-label">Owner</div>',
+          '<div class="font-semibold text-xs mt-1 truncate">' + UI.htmlEscape(owner ? owner.name : '\u2014') + '</div>',
+        '</div>',
+        '<div class="rounded-lg border border-white/5 px-3 py-2">',
+          '<div class="kpi-label">Approver</div>',
+          '<div class="font-semibold text-xs mt-1 truncate">' + UI.htmlEscape(approver ? approver.name : '\u2014') + '</div>',
+        '</div>',
+        '<div class="rounded-lg border border-white/5 px-3 py-2">',
+          '<div class="kpi-label">Effective</div>',
+          '<div class="font-semibold text-xs mt-1">' + _fmtDateOnly(p.effectiveDate) + '</div>',
+        '</div>',
+        '<div class="rounded-lg border border-white/5 px-3 py-2">',
+          '<div class="kpi-label">Next review</div>',
+          '<div class="font-semibold text-xs mt-1">' + _fmtDateOnly(p.nextReviewDate) + '</div>',
+        '</div>',
+      '</div>',
+
+      regs.length || ctrls.length
+        ? '<div class="flex flex-wrap items-center gap-1.5 mb-3">' +
+            regs.map(function (r) { return '<span class="chip" title="Regulation"><i data-lucide="book" class="w-3 h-3"></i>' + UI.htmlEscape(r.shortTitle) + '</span>'; }).join('') +
+            ctrls.map(function (c) { return '<span class="chip" title="Control" style="color:#ffc3a3"><i data-lucide="shield" class="w-3 h-3"></i>' + UI.htmlEscape(c.id) + '</span>'; }).join('') +
+          '</div>'
+        : ''
+    ].join('');
+
+    var footerHtml = [
+      '<div class="mt-4 flex items-center justify-between gap-2 pt-3 border-t border-white/5">',
+        '<div class="text-[11px] text-white/45">' + (p.fileName ? UI.htmlEscape(p.fileName) + ' \u00b7 ' + _fmtBytes(p.fileSize) : 'Seeded policy \u00b7 no attached file') + '</div>',
+        '<div class="flex items-center gap-2">',
+          (isPdf || isText)
+            ? '<button class="btn btn-ghost text-xs" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open in new tab</button>'
+            : '',
+          '<button class="btn btn-primary text-xs" onclick="UI.closeModal(); (' + _revokeViewerBlobs.toString() + ')()"><i data-lucide="check" class="w-3.5 h-3.5"></i> Done</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+
+    UI.openModal(headerHtml + hl + metaHtml + body + footerHtml);
+
+    /* Auto-scroll to the highlighted section so demo viewers land on it. */
+    if (opts.highlightSectionId) {
+      setTimeout(function () {
+        var el = document.getElementById('sec-' + opts.highlightSectionId);
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+    }
+  }
+
+  /* ====================================================================== */
+  /*  13. DEMO SCENARIO  : the "what just happened?" walkthrough            */
+  /* ====================================================================== */
+  /* A deterministic, reset-able demo. Each click of the sidebar button runs
+     the SAME scenario : "AI Act Art. 6 amendment lands in EUR-Lex, four of
+     our things move, and one specific policy section needs updating." This
+     is the moment the product earns its salary. */
+
+  var DEMO_STATE = { hasRun: false, snapshot: null };
+
+  function _snapshotState() {
+    return {
+      changes:  DATA.changes.slice(),
+      risks:    DATA.risks.slice(),
+      actions:  DATA.actions.slice(),
+      aiActLastChange: DATA.indexes.regulations['reg-ai-act'].lastChange,
+      controls: DATA.controls.map(function (c) { return { id: c.id, drift: c.drift, maturity: c.maturity }; }),
+      changesIndex: DATA.changes.length,
+      risksIndex:   DATA.risks.length,
+      actionsIndex: DATA.actions.length
+    };
+  }
+
+  function _todayIsoMinutes() {
+    var d = new Date('2026-05-21T09:14:00Z');
+    return d.toISOString();
+  }
+
+  function runDemoScenario() {
+    if (DEMO_STATE.hasRun) return _showDemoWalkthrough(/* alreadyApplied */ true);
+
+    DEMO_STATE.snapshot = _snapshotState();
+
+    /* (1) New change : AI Act Article 6 amendment. */
+    var detectedAt = _todayIsoMinutes();
+    DATA.changes.unshift({
+      id: 'chg-demo-' + Date.now().toString(36),
+      regId: 'reg-ai-act',
+      detectedAt: detectedAt,
+      summary: 'AI Act Article 6 amended: high-risk classification now also covers AI systems that materially influence consumer-credit decisions.',
+      impact: 'critical',
+      articleId: 'art-6',
+      changeType: 'modify',
+      demo: true
+    });
+
+    /* (2) Update regulation lastChange so the radar reflects "fresh". */
+    DATA.indexes.regulations['reg-ai-act'].lastChange = detectedAt.slice(0, 10);
+
+    /* (3) Bump drift on affected AI controls. */
+    ['C-AI-002', 'C-AI-003', 'C-AI-004'].forEach(function (cid) {
+      var c = DATA.indexes.controls[cid];
+      if (c) c.drift = Math.min(60, c.drift + 12);
+    });
+
+    /* (4) New P1 risk attached to credit-scoring BU. */
+    DATA.risks.push({
+      id: 'R-demo-' + Date.now().toString(36),
+      regId: 'reg-ai-act',
+      controlId: 'C-AI-002',
+      title: 'Credit-scoring model now in scope of AI Act high-risk (Art. 6 amendment): conformity assessment not started.',
+      severity: 'critical',
+      businessUnitId: 'bu-retail',
+      ownerId: 'priya',
+      openSince: detectedAt.slice(0, 10),
+      remediationDueDays: 5,
+      demo: true
+    });
+
+    /* (5) New action: revise the AI policy. */
+    DATA.actions.push({
+      id: 'A-demo-' + Date.now().toString(36),
+      riskId: DATA.risks[DATA.risks.length - 1].id,
+      title: 'Revise Responsible AI Use Policy \u00a73 (high-risk system obligations) for the Article 6 amendment.',
+      ownerId: 'priya',
+      dueInDays: 5,
+      status: 'planned',
+      effort: 'M',
+      demo: true,
+      policyId: 'pol-ai-use',
+      policySectionId: 's3'
+    });
+
+    DEMO_STATE.hasRun = true;
+    _showDemoWalkthrough(/* alreadyApplied */ false);
+  }
+
+  function resetDemoScenario() {
+    if (!DEMO_STATE.hasRun || !DEMO_STATE.snapshot) return;
+    var s = DEMO_STATE.snapshot;
+    DATA.changes.length = 0; Array.prototype.push.apply(DATA.changes, s.changes);
+    DATA.risks.length   = 0; Array.prototype.push.apply(DATA.risks,   s.risks);
+    DATA.actions.length = 0; Array.prototype.push.apply(DATA.actions, s.actions);
+    DATA.indexes.regulations['reg-ai-act'].lastChange = s.aiActLastChange;
+    s.controls.forEach(function (saved) {
+      var c = DATA.indexes.controls[saved.id];
+      if (c) { c.drift = saved.drift; c.maturity = saved.maturity; }
+    });
+    DEMO_STATE.hasRun = false;
+    DEMO_STATE.snapshot = null;
+    UI.closeModal();
+    var nav = document.querySelector('[data-route="dashboard"]');
+    if (nav) nav.click();
+  }
+
+  function _showDemoWalkthrough(alreadyApplied) {
+    var reg = DATA.indexes.regulations['reg-ai-act'];
+    var aiPolicy = DATA.getPolicyById('pol-ai-use');
+    var section = aiPolicy && aiPolicy.sections ? aiPolicy.sections.find(function (s) { return s.id === 's3'; }) : null;
+
+    var headerLine = alreadyApplied
+      ? 'Demo already running. Use Reset below to roll it back.'
+      : 'Detected at ' + new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) + ' \u00b7 source: EUR-Lex SPARQL';
+
+    var html = [
+      '<div class="flex items-start justify-between mb-4 gap-3">',
+        '<div>',
+          '<div class="text-[10px] uppercase tracking-[0.3em] text-babcom-300 mb-1 flex items-center gap-2">',
+            '<span class="pulse-dot" style="background:#ff5a1f"></span>',
+            'Demo scenario',
+          '</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">A regulatory change just landed</h3>',
+          '<p class="text-xs text-white/55 mt-1">' + UI.htmlEscape(headerLine) + '</p>',
+        '</div>',
+        '<button onclick="UI.closeModal()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>',
+
+      /* Step 1 : the change. */
+      '<div class="rounded-xl border border-white/5 p-4 mb-3 bg-black/30">',
+        '<div class="flex items-center gap-2 mb-2">',
+          '<span class="h-6 w-6 rounded-full flex items-center justify-center bg-babcom-500/20 text-babcom-200 text-[11px] font-bold">1</span>',
+          '<div class="font-bold text-sm">What changed</div>',
+        '</div>',
+        '<div class="text-[13px] text-white/80 leading-relaxed">',
+          'EU Artificial Intelligence Act (' + UI.htmlEscape(reg.celex) + ') \u00b7 ',
+          '<span class="font-semibold">Article 6</span>: high-risk classification now also covers AI systems that materially influence consumer-credit decisions.',
+        '</div>',
+        '<div class="mt-2 flex gap-2 flex-wrap">',
+          '<span class="chip" style="color:#fda4af;border-color:rgba(251,113,133,0.4)">CRITICAL</span>',
+          '<span class="chip">ELI: ' + UI.htmlEscape(reg.eli) + '</span>',
+          '<button class="chip text-babcom-300 hover:text-babcom-200" onclick="UI.closeModal(); window.__navTo(\'regulation/reg-ai-act\')"><i data-lucide="external-link" class="w-3 h-3"></i> View the article diff</button>',
+        '</div>',
+      '</div>',
+
+      /* Step 2 : the impact on our company. */
+      '<div class="rounded-xl border border-white/5 p-4 mb-3 bg-black/30">',
+        '<div class="flex items-center gap-2 mb-2">',
+          '<span class="h-6 w-6 rounded-full flex items-center justify-center bg-accent-amber/20 text-accent-amber text-[11px] font-bold">2</span>',
+          '<div class="font-bold text-sm">What it does to us</div>',
+        '</div>',
+        '<ul class="text-[13px] text-white/80 space-y-1.5 leading-relaxed">',
+          '<li>\u2022 Our <span class="font-semibold">credit-scoring model</span> is now in scope of AI Act high-risk (Retail Banking EU).</li>',
+          '<li>\u2022 Three controls are affected: <span class="font-mono text-[11px] text-babcom-300">C-AI-002</span>, <span class="font-mono text-[11px] text-babcom-300">C-AI-003</span>, <span class="font-mono text-[11px] text-babcom-300">C-AI-004</span> (drift +12% each).</li>',
+          '<li>\u2022 Enterprise risk-drift score recalculated; AI Act is now top of the radar.</li>',
+        '</ul>',
+      '</div>',
+
+      /* Step 3 : the policy section that needs to be adapted. */
+      '<div class="rounded-xl border border-babcom-500/40 bg-babcom-500/10 p-4 mb-3">',
+        '<div class="flex items-center gap-2 mb-2">',
+          '<span class="h-6 w-6 rounded-full flex items-center justify-center bg-babcom-500/30 text-babcom-200 text-[11px] font-bold">3</span>',
+          '<div class="font-bold text-sm">What needs updating</div>',
+        '</div>',
+        '<div class="text-[13px] text-white/85 leading-relaxed">',
+          'Revise <span class="font-semibold">' + UI.htmlEscape(aiPolicy ? aiPolicy.title : 'Responsible AI Use Policy') + '</span> ',
+          (section ? '\u00a7' + UI.htmlEscape(section.num) + ' <span class="text-white/60">(' + UI.htmlEscape(section.title) + ')</span>' : '\u00a73') + ' ',
+          'to include the amended Article 6 classification logic and add a conformity-assessment checkpoint for consumer-credit models.',
+        '</div>',
+        '<div class="mt-3 flex flex-wrap gap-2">',
+          '<button class="btn btn-primary text-xs" onclick="UI.closeModal(); Views.openPolicyViewer(\'pol-ai-use\', { highlightSectionId: \'s3\' })">',
+            '<i data-lucide="file-text" class="w-3.5 h-3.5"></i> Open policy at \u00a73',
+          '</button>',
+          '<button class="btn btn-ghost text-xs" onclick="UI.closeModal(); window.__navTo(\'policies\')">',
+            '<i data-lucide="folder" class="w-3.5 h-3.5"></i> All policies',
+          '</button>',
+        '</div>',
+      '</div>',
+
+      /* Step 4 : the workflow we kicked off. */
+      '<div class="rounded-xl border border-white/5 p-4 mb-4 bg-black/30">',
+        '<div class="flex items-center gap-2 mb-2">',
+          '<span class="h-6 w-6 rounded-full flex items-center justify-center bg-accent-emerald/20 text-accent-emerald text-[11px] font-bold">4</span>',
+          '<div class="font-bold text-sm">What we already did</div>',
+        '</div>',
+        '<ul class="text-[13px] text-white/80 space-y-1.5 leading-relaxed">',
+          '<li>\u2713 Opened a P1 risk against Retail Banking EU (Priya Sharma, due in 5d).</li>',
+          '<li>\u2713 Created a preventive action: revise the policy section above.</li>',
+          '<li>\u2713 The Radar, Compliance Gaps and Preventive Actions views all reflect this change now.</li>',
+        '</ul>',
+      '</div>',
+
+      '<div class="flex items-center justify-between gap-2">',
+        '<button class="btn btn-ghost text-xs" onclick="Views.resetDemoScenario()"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset demo</button>',
+        '<div class="flex items-center gap-2">',
+          '<button class="btn btn-ghost text-xs" onclick="UI.closeModal()">Close</button>',
+          '<button class="btn btn-primary text-xs" onclick="UI.closeModal(); window.__navTo(\'radar\')"><i data-lucide="radar" class="w-3.5 h-3.5"></i> Go to Radar</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+
+    UI.openModal(html);
+  }
+
   return {
     dashboard: dashboard, radar: radar, regulationDetail: regulationDetail, drift: drift,
     gaps: gaps, actions: actions, evidence: evidence, controls: controls, team: team,
@@ -2126,6 +2532,10 @@ DriftScore = (<br/>
     openPolicyPickerModal: openPolicyPickerModal,
     selectPolicyForControl:selectPolicyForControl,
     openPolicyDocument:    openPolicyDocument,
-    deletePolicy:          deletePolicy
+    openPolicyViewer:      openPolicyViewer,
+    deletePolicy:          deletePolicy,
+    /* ---------- Demo ---------- */
+    runDemoScenario:       runDemoScenario,
+    resetDemoScenario:     resetDemoScenario
   };
 })();

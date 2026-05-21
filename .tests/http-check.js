@@ -4,7 +4,7 @@ const http = require('http');
 const PORT = Number(process.env.PORT) || 8080;
 const targets = [
   { path: '/',                                   contains: ['GRCentral', 'Montserrat'] },
-  { path: '/index.html',                         contains: ['GRCentral', 'assets/js/app.js'] },
+  { path: '/index.html',                         contains: ['GRCentral', 'assets/js/app.js', "frame-src 'self' blob:"] },
   { path: '/assets/css/styles.css',              contains: ['Montserrat', 'gr-card'] },
   { path: '/assets/js/data.js',                  contains: ['window.DATA', '32024R1689'] },
   { path: '/assets/js/risk-engine.js',           contains: ['RiskEngine', 'TrendMultiplier'] },
@@ -12,6 +12,7 @@ const targets = [
   { path: '/assets/js/views.js',                 contains: ['window.Views', 'regulationDetail'] },
   { path: '/assets/js/app.js',                   contains: ['Regulatory Radar', 'personaSwitcher'] },
   { path: '/README.md',                          contains: ['GRCentral', 'Risk Drift'] },
+  { path: '/assets/img/babcom-logo.png',         expectContentType: 'image/png' },
   { path: '/this-must-404',                      expectStatus: 404 }
 ];
 
@@ -39,6 +40,10 @@ function fetch(p) {
       if (t.contains) {
         const missing = t.contains.filter(s => !r.body.includes(s));
         if (missing.length) throw new Error('missing markers: ' + missing.join(', '));
+      }
+      if (t.expectContentType) {
+        const ct = String(r.headers['content-type'] || '');
+        if (ct.indexOf(t.expectContentType) === -1) throw new Error('expected Content-Type ' + t.expectContentType + ', got ' + ct);
       }
       ok++;
       const ct = r.headers['content-type'] || '?';

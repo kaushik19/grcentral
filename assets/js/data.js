@@ -11,15 +11,15 @@ window.DATA = (() => {
   const sources = [
     { id: 'eur-lex', name: 'EUR-Lex',               url: 'https://eur-lex.europa.eu/',                jurisdiction: 'EU',     type: 'primary',  outputFormat: 'Akoma Ntoso XML',  ingestion: 'SPARQL + RSS',  pollInterval: '1h',  status: 'healthy', lastSyncMin: 12,  documentsTracked: 8421, description: 'Primary EU legal portal. CELEX + ELI versioning, daily delta poll.' },
     { id: 'edpb',    name: 'EDPB',                  url: 'https://www.edpb.europa.eu/',               jurisdiction: 'EU',     type: 'guidance', outputFormat: 'HTML + PDF',       ingestion: 'RSS + scrape',  pollInterval: '3h',  status: 'healthy', lastSyncMin: 28,  documentsTracked: 462,  description: 'European Data Protection Board opinions and guidelines.' },
-    { id: 'ec-dig',  name: 'EC · Digital Strategy', url: 'https://digital-strategy.ec.europa.eu/',    jurisdiction: 'EU',     type: 'policy',   outputFormat: 'HTML',             ingestion: 'RSS + scrape',  pollInterval: '6h',  status: 'healthy', lastSyncMin: 65,  documentsTracked: 318,  description: 'EC Digital Strategy portal — AI Act, Data Act, GDPR-adjacent policy.' },
+    { id: 'ec-dig',  name: 'EC · Digital Strategy', url: 'https://digital-strategy.ec.europa.eu/',    jurisdiction: 'EU',     type: 'policy',   outputFormat: 'HTML',             ingestion: 'RSS + scrape',  pollInterval: '6h',  status: 'healthy', lastSyncMin: 65,  documentsTracked: 318,  description: 'EC Digital Strategy portal: AI Act, Data Act, GDPR-adjacent policy.' },
     { id: 'enisa',   name: 'ENISA',                 url: 'https://www.enisa.europa.eu/',              jurisdiction: 'EU',     type: 'cyber',    outputFormat: 'HTML + PDF',       ingestion: 'RSS + PDF parse',pollInterval: '6h',  status: 'healthy', lastSyncMin: 40,  documentsTracked: 287,  description: 'EU Agency for Cybersecurity advisories and threat landscape reports.' },
-    { id: 'gdpr-eu', name: 'GDPR.eu',               url: 'https://gdpr.eu/',                          jurisdiction: 'EU',     type: 'info',     outputFormat: 'HTML',             ingestion: 'HTML scrape',   pollInterval: '24h', status: 'healthy', lastSyncMin: 120, documentsTracked: 145,  description: 'Informational GDPR portal — used for crosswalk hints, not authoritative.' },
-    { id: 'ico',     name: 'UK ICO',                url: 'https://ico.org.uk/',                       jurisdiction: 'UK',     type: 'guidance', outputFormat: 'HTML + RSS',       ingestion: 'RSS',           pollInterval: '3h',  status: 'healthy', lastSyncMin: 33,  documentsTracked: 511,  description: 'UK Information Commissioner — post-Brexit privacy guidance and decisions.' },
-    { id: 'nist',    name: 'NIST',                  url: 'https://www.nist.gov/',                     jurisdiction: 'US',     type: 'standard', outputFormat: 'JSON API',         ingestion: 'REST',          pollInterval: '6h',  status: 'healthy', lastSyncMin: 50,  documentsTracked: 1204, description: 'NIST CSRC Publications API — CSF 2.0 and related publications.' },
-    { id: 'cisa',    name: 'CISA',                  url: 'https://www.cisa.gov/',                     jurisdiction: 'US',     type: 'advisory', outputFormat: 'JSON',             ingestion: 'REST feed',     pollInterval: '1h',  status: 'healthy', lastSyncMin: 18,  documentsTracked: 2873, description: 'US Cybersecurity and Infrastructure Security Agency — advisory feed.' },
+    { id: 'gdpr-eu', name: 'GDPR.eu',               url: 'https://gdpr.eu/',                          jurisdiction: 'EU',     type: 'info',     outputFormat: 'HTML',             ingestion: 'HTML scrape',   pollInterval: '24h', status: 'healthy', lastSyncMin: 120, documentsTracked: 145,  description: 'Informational GDPR portal: used for crosswalk hints, not authoritative.' },
+    { id: 'ico',     name: 'UK ICO',                url: 'https://ico.org.uk/',                       jurisdiction: 'UK',     type: 'guidance', outputFormat: 'HTML + RSS',       ingestion: 'RSS',           pollInterval: '3h',  status: 'healthy', lastSyncMin: 33,  documentsTracked: 511,  description: 'UK Information Commissioner: post-Brexit privacy guidance and decisions.' },
+    { id: 'nist',    name: 'NIST',                  url: 'https://www.nist.gov/',                     jurisdiction: 'US',     type: 'standard', outputFormat: 'JSON API',         ingestion: 'REST',          pollInterval: '6h',  status: 'healthy', lastSyncMin: 50,  documentsTracked: 1204, description: 'NIST CSRC Publications API: CSF 2.0 and related publications.' },
+    { id: 'cisa',    name: 'CISA',                  url: 'https://www.cisa.gov/',                     jurisdiction: 'US',     type: 'advisory', outputFormat: 'JSON',             ingestion: 'REST feed',     pollInterval: '1h',  status: 'healthy', lastSyncMin: 18,  documentsTracked: 2873, description: 'US Cybersecurity and Infrastructure Security Agency: advisory feed.' },
     { id: 'certin',  name: 'CERT-In',               url: 'https://www.cert-in.org.in/',               jurisdiction: 'IN',     type: 'advisory', outputFormat: 'HTML + PDF',       ingestion: 'HTML scrape',   pollInterval: '2h',  status: 'healthy', lastSyncMin: 22,  documentsTracked: 921,  description: 'Indian Computer Emergency Response Team advisories.' },
-    { id: 'owasp',   name: 'OWASP',                 url: 'https://owasp.org/',                        jurisdiction: 'Global', type: 'standard', outputFormat: 'Git releases',     ingestion: 'GitHub poll',   pollInterval: '24h', status: 'healthy', lastSyncMin: 240, documentsTracked: 184,  description: 'OWASP project releases — Top-10, ASVS, MASVS, SAMM.' },
-    { id: 'cis',     name: 'CIS Benchmarks',        url: 'https://www.cisecurity.org/cis-benchmarks', jurisdiction: 'Global', type: 'standard', outputFormat: 'PDF + JSON',       ingestion: 'Versioned HTTP',pollInterval: '24h', status: 'healthy', lastSyncMin: 95,  documentsTracked: 348,  description: 'CIS Benchmarks — hardened-config guides for cloud, OS, container.' }
+    { id: 'owasp',   name: 'OWASP',                 url: 'https://owasp.org/',                        jurisdiction: 'Global', type: 'standard', outputFormat: 'Git releases',     ingestion: 'GitHub poll',   pollInterval: '24h', status: 'healthy', lastSyncMin: 240, documentsTracked: 184,  description: 'OWASP project releases: Top-10, ASVS, MASVS, SAMM.' },
+    { id: 'cis',     name: 'CIS Benchmarks',        url: 'https://www.cisecurity.org/cis-benchmarks', jurisdiction: 'Global', type: 'standard', outputFormat: 'PDF + JSON',       ingestion: 'Versioned HTTP',pollInterval: '24h', status: 'healthy', lastSyncMin: 95,  documentsTracked: 348,  description: 'CIS Benchmarks: hardened-config guides for cloud, OS, container.' }
   ];
 
   /* ---------------------------- Personas ---------------------------------- */
@@ -190,7 +190,7 @@ window.DATA = (() => {
     },
     {
       id: 'reg-eidas2',
-      title: 'eIDAS 2.0 — EU Digital Identity Framework',
+      title: 'eIDAS 2.0: EU Digital Identity Framework',
       shortTitle: 'eIDAS 2.0',
       celex: '32024R1183',
       eli: 'http://data.europa.eu/eli/reg/2024/1183/oj',
@@ -279,7 +279,7 @@ window.DATA = (() => {
       sourceId: 'nist',
       effectiveDate: '2024-02-26',
       topics: ['Cybersecurity', 'Governance', 'Identify-Protect-Detect-Respond-Recover'],
-      summary: 'Voluntary framework of cybersecurity outcomes — used as a crosswalk to NIS2 and DORA controls.',
+      summary: 'Voluntary framework of cybersecurity outcomes: used as a crosswalk to NIS2 and DORA controls.',
       buExposure: ['bu-cloud', 'bu-card', 'bu-retail'],
       lastChange: '2026-04-02',
       changeType: 'guidance',
@@ -288,7 +288,7 @@ window.DATA = (() => {
     },
     {
       id: 'reg-certin-2024',
-      title: 'CERT-In Direction No. 20(3)/2022 — Cyber incident reporting',
+      title: 'CERT-In Direction No. 20(3)/2022: Cyber incident reporting',
       shortTitle: 'CERT-In Dir.',
       celex: null, eli: null,
       sourceUrl: 'https://www.cert-in.org.in/',
@@ -308,9 +308,9 @@ window.DATA = (() => {
 
   /* ---------------------------- Controls ---------------------------------- */
   const controls = [
-    { id: 'C-AC-001',  name: 'Identity & access management — privileged accounts', framework: 'NIST CSF · PR.AC', owner: 'vikram', maturity: 78, drift: 4 },
-    { id: 'C-DP-014',  name: 'Encryption at rest — production datastores',        framework: 'GDPR Art.32 · NIST CSF', owner: 'vikram', maturity: 64, drift: 14 },
-    { id: 'C-DP-015',  name: 'Encryption in transit — internal service mesh',     framework: 'GDPR Art.32',  owner: 'vikram', maturity: 71, drift: 9 },
+    { id: 'C-AC-001',  name: 'Identity & access management: privileged accounts', framework: 'NIST CSF · PR.AC', owner: 'vikram', maturity: 78, drift: 4 },
+    { id: 'C-DP-014',  name: 'Encryption at rest: production datastores',        framework: 'GDPR Art.32 · NIST CSF', owner: 'vikram', maturity: 64, drift: 14 },
+    { id: 'C-DP-015',  name: 'Encryption in transit: internal service mesh',     framework: 'GDPR Art.32',  owner: 'vikram', maturity: 71, drift: 9 },
     { id: 'C-AI-002',  name: 'AI risk-management system (ISO 42001)',             framework: 'AI Act Art.9', owner: 'priya',  maturity: 42, drift: 22 },
     { id: 'C-AI-003',  name: 'Training-data governance & provenance',             framework: 'AI Act Art.10', owner: 'priya', maturity: 38, drift: 25 },
     { id: 'C-AI-004',  name: 'GPAI technical documentation register',             framework: 'AI Act Art.53', owner: 'priya', maturity: 21, drift: 31 },
@@ -318,22 +318,22 @@ window.DATA = (() => {
     { id: 'C-TP-022',  name: 'ICT third-party register & subprocessor chain',     framework: 'DORA Art.28-30', owner: 'rohan', maturity: 48, drift: 18 },
     { id: 'C-SC-031',  name: 'SBOM generation & disclosure',                       framework: 'NIS2 Art.21 · CRA', owner: 'vikram', maturity: 35, drift: 24 },
     { id: 'C-DR-040',  name: 'Records of processing activities (RoPA)',           framework: 'GDPR Art.30',  owner: 'ananya', maturity: 82, drift: 3 },
-    { id: 'C-DR-041',  name: 'DPIA — high-risk processing',                       framework: 'GDPR Art.35',  owner: 'ananya', maturity: 67, drift: 8 },
+    { id: 'C-DR-041',  name: 'DPIA: high-risk processing',                       framework: 'GDPR Art.35',  owner: 'ananya', maturity: 67, drift: 8 },
     { id: 'C-LR-050',  name: 'Log retention (180-day, India)',                     framework: 'CERT-In Dir.', owner: 'vikram', maturity: 73, drift: 6 }
   ];
 
   /* ------------------- Recent regulatory changes (radar) ------------------ */
   const changes = [
-    { id: 'chg-01', regId: 'reg-ai-act',   detectedAt: '2026-05-12T07:14:00Z', summary: 'New Article 53 — GPAI technical documentation obligations published as Commission guidance.', impact: 'critical', articleId: 'art-53', changeType: 'add'    },
-    { id: 'chg-02', regId: 'reg-ai-act',   detectedAt: '2026-05-12T07:14:00Z', summary: 'Article 10 reworded — explicit data-provenance & bias-mitigation documentation.',           impact: 'high',     articleId: 'art-10', changeType: 'modify' },
-    { id: 'chg-03', regId: 'reg-edpb-opn-4-2026', detectedAt: '2026-05-16T09:02:00Z', summary: 'EDPB Opinion 4/2026 — encryption-at-rest and in-transit mandated for high-risk processing.', impact: 'high', articleId: null, changeType: 'add' },
+    { id: 'chg-01', regId: 'reg-ai-act',   detectedAt: '2026-05-12T07:14:00Z', summary: 'New Article 53: GPAI technical documentation obligations published as Commission guidance.', impact: 'critical', articleId: 'art-53', changeType: 'add'    },
+    { id: 'chg-02', regId: 'reg-ai-act',   detectedAt: '2026-05-12T07:14:00Z', summary: 'Article 10 reworded: explicit data-provenance & bias-mitigation documentation.',           impact: 'high',     articleId: 'art-10', changeType: 'modify' },
+    { id: 'chg-03', regId: 'reg-edpb-opn-4-2026', detectedAt: '2026-05-16T09:02:00Z', summary: 'EDPB Opinion 4/2026: encryption-at-rest and in-transit mandated for high-risk processing.', impact: 'high', articleId: null, changeType: 'add' },
     { id: 'chg-04', regId: 'reg-gdpr',     detectedAt: '2026-05-16T09:02:00Z', summary: 'Article 32 interpretation tightened by EDPB Op. 4/2026.', impact: 'high',     articleId: 'gdpr-32', changeType: 'modify' },
-    { id: 'chg-05', regId: 'reg-dora',     detectedAt: '2026-05-14T11:50:00Z', summary: 'RTS adopted — explicit subcontracting chains for AI sub-processors.',                 impact: 'high',     articleId: 'dora-30', changeType: 'add'    },
-    { id: 'chg-06', regId: 'reg-nis2',     detectedAt: '2026-05-09T15:21:00Z', summary: 'Article 21 amended — SBOM disclosure to authorities and annual adversary simulation.', impact: 'high',     articleId: 'nis2-21', changeType: 'modify' },
+    { id: 'chg-05', regId: 'reg-dora',     detectedAt: '2026-05-14T11:50:00Z', summary: 'RTS adopted: explicit subcontracting chains for AI sub-processors.',                 impact: 'high',     articleId: 'dora-30', changeType: 'add'    },
+    { id: 'chg-06', regId: 'reg-nis2',     detectedAt: '2026-05-09T15:21:00Z', summary: 'Article 21 amended: SBOM disclosure to authorities and annual adversary simulation.', impact: 'high',     articleId: 'nis2-21', changeType: 'modify' },
     { id: 'chg-07', regId: 'reg-certin-2024', detectedAt: '2026-05-10T05:30:00Z', summary: 'CERT-In advisory clarifies 6-hour reporting also applies to cloud-only entities serving Indian residents.', impact: 'medium', articleId: null, changeType: 'modify' },
     { id: 'chg-08', regId: 'reg-data-act', detectedAt: '2026-05-05T08:00:00Z', summary: 'Commission Q&A published on Article 3 data-accessibility obligations.',                 impact: 'medium',   articleId: 'da-3', changeType: 'modify' },
-    { id: 'chg-09', regId: 'reg-cra',      detectedAt: '2026-04-29T13:00:00Z', summary: 'CRA harmonised standards draft — SBOM mandatory in CycloneDX or SPDX format.',          impact: 'medium',   articleId: null, changeType: 'modify' },
-    { id: 'chg-10', regId: 'reg-nist-csf', detectedAt: '2026-04-02T16:00:00Z', summary: 'NIST IR 8477 published — mappings between CSF 2.0 and NIS2 controls.',                  impact: 'low',      articleId: null, changeType: 'add'    },
+    { id: 'chg-09', regId: 'reg-cra',      detectedAt: '2026-04-29T13:00:00Z', summary: 'CRA harmonised standards draft: SBOM mandatory in CycloneDX or SPDX format.',          impact: 'medium',   articleId: null, changeType: 'modify' },
+    { id: 'chg-10', regId: 'reg-nist-csf', detectedAt: '2026-04-02T16:00:00Z', summary: 'NIST IR 8477 published: mappings between CSF 2.0 and NIS2 controls.',                  impact: 'low',      articleId: null, changeType: 'add'    },
     { id: 'chg-11', regId: 'reg-dsa',      detectedAt: '2026-04-22T10:00:00Z', summary: 'Commission guidance on ad-repository data fields.',                                     impact: 'low',      articleId: 'dsa-26', changeType: 'modify' }
   ];
 
@@ -342,7 +342,7 @@ window.DATA = (() => {
     { id: 'R-001', regId: 'reg-ai-act', controlId: 'C-AI-004', title: 'GPAI documentation not in place for internal LLM platform',  severity: 'critical', businessUnitId: 'bu-ai',    ownerId: 'priya',  openSince: '2026-04-22', remediationDueDays: -4 },
     { id: 'R-002', regId: 'reg-ai-act', controlId: 'C-AI-003', title: 'Training data lineage missing for fraud-detection model',     severity: 'high',     businessUnitId: 'bu-card',  ownerId: 'priya',  openSince: '2026-04-30', remediationDueDays: 9 },
     { id: 'R-003', regId: 'reg-gdpr',   controlId: 'C-DP-014', title: 'Encryption-at-rest disabled on legacy KYC datastore',          severity: 'critical', businessUnitId: 'bu-retail', ownerId: 'vikram', openSince: '2026-05-02', remediationDueDays: 3 },
-    { id: 'R-004', regId: 'reg-edpb-opn-4-2026', controlId: 'C-DP-015', title: 'Internal service mesh — mTLS not enforced on 12% of services', severity: 'high', businessUnitId: 'bu-cloud', ownerId: 'vikram', openSince: '2026-05-04', remediationDueDays: 12 },
+    { id: 'R-004', regId: 'reg-edpb-opn-4-2026', controlId: 'C-DP-015', title: 'Internal service mesh: mTLS not enforced on 12% of services', severity: 'high', businessUnitId: 'bu-cloud', ownerId: 'vikram', openSince: '2026-05-04', remediationDueDays: 12 },
     { id: 'R-005', regId: 'reg-dora',   controlId: 'C-IR-007', title: 'ICT incident classification SLA averaging 6h17m vs 4h target',  severity: 'high',     businessUnitId: 'bu-card',  ownerId: 'vikram', openSince: '2026-04-18', remediationDueDays: 5 },
     { id: 'R-006', regId: 'reg-dora',   controlId: 'C-TP-022', title: 'Subprocessor chain incomplete for 3 critical SaaS vendors',    severity: 'high',     businessUnitId: 'bu-cloud', ownerId: 'rohan',  openSince: '2026-04-29', remediationDueDays: 21 },
     { id: 'R-007', regId: 'reg-nis2',   controlId: 'C-SC-031', title: 'SBOM coverage at 58% across container images',                 severity: 'high',     businessUnitId: 'bu-cloud', ownerId: 'vikram', openSince: '2026-04-12', remediationDueDays: 35 },
@@ -362,7 +362,7 @@ window.DATA = (() => {
     { id: 'EV-106', controlId: 'C-TP-022', name: 'Vendor subprocessor register',           collectedAt: '2025-12-12', expiresInDays: -120,source: 'OneTrust' },
     { id: 'EV-107', controlId: 'C-SC-031', name: 'SBOM (CycloneDX) artefacts',             collectedAt: '2026-05-15', expiresInDays: 45,  source: 'Anchore' },
     { id: 'EV-108', controlId: 'C-DR-040', name: 'RoPA export',                            collectedAt: '2026-05-08', expiresInDays: 20,  source: 'OneTrust' },
-    { id: 'EV-109', controlId: 'C-DR-041', name: 'DPIA — credit-scoring model',            collectedAt: null,         expiresInDays: null, source: 'Pending' },
+    { id: 'EV-109', controlId: 'C-DR-041', name: 'DPIA: credit-scoring model',            collectedAt: null,         expiresInDays: null, source: 'Pending' },
     { id: 'EV-110', controlId: 'C-LR-050', name: 'CloudWatch retention attestation',       collectedAt: '2026-04-26', expiresInDays: 5,   source: 'AWS Config' }
   ];
 
@@ -407,7 +407,14 @@ window.DATA = (() => {
       mapsToArticles: ['gdpr-5', 'gdpr-6', 'gdpr-25', 'gdpr-30'],
       implementedByControls: ['C-DR-040', 'C-DR-041'],
       attestations: { required: 1200, completed: 1145 },
-      tags: ['privacy', 'mandatory']
+      tags: ['privacy', 'mandatory'],
+      sections: [
+        { id: 's1', num: '1', title: 'Scope and applicability', body: 'Applies to every business unit, contractor and processor handling personal data of EU/EEA, UK or Indian data subjects, regardless of where the processing happens.' },
+        { id: 's2', num: '2', title: 'Lawful basis and consent', body: 'Each processing activity is recorded against one of six lawful bases per GDPR Art. 6. Consent, where used, is unbundled, granular and revocable through the customer portal.' },
+        { id: 's3', num: '3', title: 'Data minimisation and retention', body: 'Default retention is 24 months for marketing, 7 years for KYC, 10 years for accounting. Anything beyond requires a documented business case approved by the DPO.' },
+        { id: 's4', num: '4', title: 'Data subject rights (DSR)', body: 'Access, rectification, erasure and portability requests are answered within 30 calendar days. The DSR queue is monitored daily; SLAs are tracked in PagerDuty.' },
+        { id: 's5', num: '5', title: 'International transfers', body: 'Transfers outside the EEA rely on Standard Contractual Clauses 2021/914, supplemented by a Transfer Impact Assessment refreshed annually.' }
+      ]
     },
     {
       id: 'pol-acceptable-use',
@@ -429,7 +436,13 @@ window.DATA = (() => {
       mapsToArticles: [],
       implementedByControls: ['C-AC-001'],
       attestations: { required: 1200, completed: 1199 },
-      tags: ['mandatory', 'org-wide']
+      tags: ['mandatory', 'org-wide'],
+      sections: [
+        { id: 's1', num: '1', title: 'Acceptable use of corporate systems', body: 'Corporate laptops, accounts and cloud services may only be used for work or de-minimis personal use. No mining, no scraping at scale, no automated harvesting of third-party services.' },
+        { id: 's2', num: '2', title: 'Generative AI tools', body: 'Public LLM services may not receive customer personal data, source code, or confidential decks. Approved enterprise LLM endpoints (Azure OpenAI tenanted, Vertex AI tenanted) are available via the AI Gateway.' },
+        { id: 's3', num: '3', title: 'Removable media and BYOD', body: 'Personal USB drives, SD cards and portable HDDs are blocked at the endpoint. BYOD phones must be enrolled in MDM with separate work profile and FDE.' },
+        { id: 's4', num: '4', title: 'Remote access', body: 'Remote access is exclusively over the Zscaler tunnel; split tunnelling is disabled. RDP/SSH to production is brokered through the PAM with session recording.' }
+      ]
     },
     {
       id: 'pol-encryption-standard',
@@ -439,7 +452,7 @@ window.DATA = (() => {
       ownerId: 'vikram',
       approverId: 'aarav',
       effectiveDate: '2025-11-01',
-      nextReviewDate: '2026-07-01',                                 // due in <90d — surfaces in KPI
+      nextReviewDate: '2026-07-01',                                 // due in <90d: surfaces in KPI
       source: 'seeded',
       format: 'pdf',
       documentUrl: 'https://www.edpb.europa.eu/',
@@ -451,7 +464,14 @@ window.DATA = (() => {
       mapsToArticles: ['gdpr-32'],
       implementedByControls: ['C-DP-014', 'C-DP-015'],
       attestations: { required: 320, completed: 280 },
-      tags: ['security', 'technical']
+      tags: ['security', 'technical'],
+      sections: [
+        { id: 's1', num: '1', title: 'Cipher suites', body: 'TLS 1.2 with PFS-only suites, TLS 1.3 preferred. AES-256-GCM, ChaCha20-Poly1305. RSA-2048 minimum; ECDSA P-256/P-384 preferred. No RC4, no 3DES, no SHA-1.' },
+        { id: 's2', num: '2', title: 'Encryption at rest', body: 'All production datastores (RDS, S3, DocumentDB, EFS, EBS) are encrypted at rest with KMS CMKs. Backups inherit the same key policy. Keys rotated annually; per-tenant CMKs for the SaaS plane.' },
+        { id: 's3', num: '3', title: 'Encryption in transit', body: 'Every internal service-to-service hop is mutual TLS through the Istio mesh. Edge traffic terminates at the ALB with HSTS preload.' },
+        { id: 's4', num: '4', title: 'Key management', body: 'AWS KMS is the system of record. Customer-managed keys are stored in KMS Custody for regulated tenants. Manual key handling is forbidden outside the HSM workflow.' },
+        { id: 's5', num: '5', title: 'High-risk processing (EDPB Op. 4/2026)', body: 'Any processing classified as high-risk under GDPR Art. 35 must apply encryption-at-rest AND in-transit, with a documented residual-risk acceptance from the DPO.' }
+      ]
     },
     {
       id: 'pol-ai-use',
@@ -473,7 +493,15 @@ window.DATA = (() => {
       mapsToArticles: ['art-5', 'art-9', 'art-10', 'art-53'],
       implementedByControls: ['C-AI-002', 'C-AI-003', 'C-AI-004'],
       attestations: { required: 240, completed: 162 },
-      tags: ['ai', 'mandatory']
+      tags: ['ai', 'mandatory'],
+      sections: [
+        { id: 's1', num: '1', title: 'Risk-tiering of AI systems', body: 'Every internal or vendor AI system is classified at intake: prohibited, high-risk, limited-risk or minimal-risk. The classification is reviewed quarterly and at every material model change.' },
+        { id: 's2', num: '2', title: 'Prohibited use cases (AI Act Art. 5)', body: 'Social scoring, real-time biometric ID in public spaces, manipulative or exploitative systems, and untargeted scraping of facial images are not permitted. No exception process.' },
+        { id: 's3', num: '3', title: 'High-risk system obligations (AI Act Annex III)', body: 'High-risk systems require a documented risk-management system (ISO 42001), conformity assessment, human oversight controls and post-market monitoring. See Article 6, Article 9 of the AI Act.' },
+        { id: 's4', num: '4', title: 'Training data governance (AI Act Art. 10)', body: 'Training, validation and test sets must be relevant, representative and free of obvious errors. Provenance is recorded in the data card; bias-mitigation steps are logged.' },
+        { id: 's5', num: '5', title: 'GPAI providers (AI Act Art. 53)', body: 'For foundation models we either deploy as a deployer (vendor obligations) or, where Babcom is the provider, we maintain the technical documentation register, copyright-policy and downstream-disclosure pack.' },
+        { id: 's6', num: '6', title: 'Human-in-the-loop overrides', body: 'For any AI-assisted decision affecting a natural person\u2019s rights, the customer-facing workflow exposes a one-click human-review path with a 5-day SLA.' }
+      ]
     },
     {
       id: 'pol-incident-response',
@@ -495,7 +523,14 @@ window.DATA = (() => {
       mapsToArticles: ['nis2-23', 'dora-17'],
       implementedByControls: ['C-IR-007', 'C-LR-050'],
       attestations: { required: 110, completed: 110 },
-      tags: ['security', 'operational']
+      tags: ['security', 'operational'],
+      sections: [
+        { id: 's1', num: '1', title: 'Detection', body: 'SOC operates 24x7 on Sentinel + a Splunk back-end. Detections cover the MITRE ATT&CK enterprise matrix; weekly purple-team exercises tune the noisiest analytics.' },
+        { id: 's2', num: '2', title: 'Classification (DORA Art. 17)', body: 'Incidents are classified within 4 hours of detection against the DORA criteria (clients affected, data lost, geographic reach, reputational impact, economic impact, duration, criticality).' },
+        { id: 's3', num: '3', title: 'Notifications', body: 'NIS2 24h early-warning, 72h notification, 1-month final report. CERT-In 6h reporting for India-presence incidents. DORA major-incident reporting through the JRA portal.' },
+        { id: 's4', num: '4', title: 'Containment and eradication', body: 'Runbooks per attack family (ransomware, identity-compromise, supply-chain, web-app). Each runbook ends with a forensic-preservation step that is logged into the JEDB.' },
+        { id: 's5', num: '5', title: 'Post-incident review', body: 'Blameless review within 10 business days, RCA and corrective-actions tracked to closure. Findings feed the next quarter\u2019s purple-team scope.' }
+      ]
     },
     {
       id: 'pol-third-party-risk',
@@ -517,7 +552,14 @@ window.DATA = (() => {
       mapsToArticles: ['dora-28', 'dora-30', 'nis2-21'],
       implementedByControls: ['C-TP-022', 'C-SC-031'],
       attestations: { required: 80, completed: 0 },
-      tags: ['vendor', 'draft']
+      tags: ['vendor', 'draft'],
+      sections: [
+        { id: 's1', num: '1', title: 'Vendor tiering', body: 'Vendors are tiered T1 to T4 by the criticality of the function they support. T1 (critical-or-important per DORA) carry the strictest contractual minima and an annual on-site assurance review.' },
+        { id: 's2', num: '2', title: 'Due diligence', body: 'Pre-contract: SIG-Lite, SOC 2 Type II, ISO 27001, financial-stability check. Post-contract: continuous monitoring through SecurityScorecard + concentration analysis quarterly.' },
+        { id: 's3', num: '3', title: 'Contractual minima (DORA Art. 28-30)', body: 'Right to audit, sub-contractor disclosure, exit plan, encryption in transit and at rest, incident notification within 24h, and explicit subcontracting chains for any AI sub-processor.' },
+        { id: 's4', num: '4', title: 'SBOM expectations', body: 'For products with digital elements (CRA scope): CycloneDX or SPDX SBOM at every release, signed, with a 7-day SLA for known-vulnerable component disclosure.' },
+        { id: 's5', num: '5', title: 'Exit and concentration', body: 'Every T1 vendor has an exit plan reviewed annually. The combined Tier-1 cloud + payments concentration is capped per the board\u2019s risk appetite (currently 60% of any single hyperscaler).' }
+      ]
     }
   ];
 

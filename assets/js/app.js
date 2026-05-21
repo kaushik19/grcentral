@@ -60,7 +60,7 @@
         <h3 class="font-bold text-lg">Switch persona</h3>
         <button onclick="UI.closeModal()" class="text-white/40 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
-      <p class="text-xs text-white/50 mb-4">GRCentral renders role-specific dashboards. The risk numbers stay the same — what each persona sees first changes.</p>
+      <p class="text-xs text-white/50 mb-4">GRCentral renders role-specific dashboards. The risk numbers stay the same; what each persona sees first changes.</p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         ${DATA.personas.map(p => `
           <button class="text-left p-4 rounded-xl border border-white/5 hover:border-babcom-500/40 hover:bg-white/[0.02] transition" data-pick="${p.id}">
@@ -126,6 +126,9 @@
     renderView();
   }
 
+  /* Expose for in-modal CTAs (e.g. demo walkthrough's "Go to Radar"). */
+  window.__navTo = navigate;
+
   /* ---- Event delegation -------------------------------------------------- */
 
   document.addEventListener('click', (e) => {
@@ -162,6 +165,14 @@
         setTimeout(() => { btn.textContent = 'Sync now'; btn.disabled = false; }, 1400);
       }, 900);
     });
+
+    const runDemoBtn = document.getElementById('runDemo');
+    if (runDemoBtn) {
+      runDemoBtn.addEventListener('click', () => {
+        Views.runDemoScenario();
+        renderView();          /* re-render whatever's currently on screen */
+      });
+    }
 
     /* Global search → open modal with hits */
     document.getElementById('globalSearch').addEventListener('keydown', (e) => {

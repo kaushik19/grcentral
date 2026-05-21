@@ -7,10 +7,10 @@
        response headers. Allowing 'unsafe-inline' and 'unsafe-eval' for scripts
        is a regrettable concession to the Tailwind CDN runtime; everything
        else is allow-listed. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
-  <title>GRCentral — Continuous Governance, Risk & Compliance</title>
+  <title>GRCentral</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -38,10 +38,12 @@
   <!-- Loading splash -->
   <div id="splash" class="fixed inset-0 z-[100] flex items-center justify-center bg-ink-950">
     <div class="text-center">
-      <div class="mx-auto mb-6 h-14 w-14 rounded-2xl bg-gradient-to-br from-babcom-500 to-babcom-700 flex items-center justify-center shadow-[0_0_60px_rgba(255,90,31,0.45)]">
+      <div class="mx-auto mb-5 h-14 w-14 rounded-2xl bg-gradient-to-br from-babcom-500 to-babcom-700 flex items-center justify-center shadow-[0_0_60px_rgba(255,90,31,0.45)]">
         <span class="font-black text-2xl tracking-tight">GR</span>
       </div>
-      <div class="text-xs uppercase tracking-[0.4em] text-white/40">Loading GRCentral</div>
+      <div class="font-extrabold text-xl tracking-tight mb-3">GRCentral</div>
+      <img src="assets/img/babcom-logo.png" alt="babcom" class="h-4 w-auto mx-auto opacity-90" />
+      <div class="text-xs uppercase tracking-[0.4em] text-white/40 mt-5">Loading…</div>
     </div>
   </div>
 
@@ -52,25 +54,35 @@
     <aside class="border-r border-white/5 bg-ink-900/80 backdrop-blur-xl sticky top-0 h-screen flex flex-col">
       <div class="px-5 py-5 border-b border-white/5">
         <div class="flex items-center gap-3">
-          <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-babcom-500 to-babcom-700 flex items-center justify-center shadow-[0_0_30px_rgba(255,90,31,0.35)]">
+          <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-babcom-500 to-babcom-700 flex items-center justify-center shadow-[0_0_30px_rgba(255,90,31,0.35)] flex-shrink-0">
             <span class="font-black text-lg">GR</span>
           </div>
-          <div>
-            <div class="font-extrabold tracking-tight text-[15px]">GRCentral</div>
-            <div class="text-[10px] uppercase tracking-[0.25em] text-white/40">Babcom · GRC OS</div>
+          <div class="min-w-0">
+            <div class="font-extrabold tracking-tight text-[15px] leading-none">GRCentral</div>
+            <div class="mt-1.5 flex items-center gap-1.5">
+              <span class="text-[9px] uppercase tracking-[0.22em] text-white/35">by</span>
+              <img src="assets/img/babcom-logo.png" alt="babcom" class="h-3 w-auto opacity-85" />
+            </div>
           </div>
         </div>
       </div>
 
       <nav id="nav" class="flex-1 overflow-y-auto px-3 py-4 space-y-1 text-sm"></nav>
 
-      <div class="px-3 pb-4">
+      <div class="px-3 pb-4 space-y-3">
+        <button id="runDemo" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-babcom-500/40 bg-gradient-to-br from-babcom-500/15 to-babcom-700/5 text-babcom-200 hover:from-babcom-500/25 hover:to-babcom-700/10 hover:text-white transition text-left">
+          <i data-lucide="zap" class="w-4 h-4 flex-shrink-0"></i>
+          <div class="min-w-0">
+            <div class="text-[12px] font-semibold leading-none">Run demo scenario</div>
+            <div class="text-[10px] text-white/45 mt-1 leading-none">trigger a regulatory change</div>
+          </div>
+        </button>
         <div class="rounded-xl border border-white/5 bg-ink-800/60 p-3">
           <div class="flex items-center gap-2 mb-2">
             <i data-lucide="radio" class="w-3.5 h-3.5 text-accent-emerald"></i>
             <span class="text-[11px] uppercase tracking-widest text-white/50">Live feeds</span>
           </div>
-          <div class="text-xs text-white/70">10 sources · last sync <span id="lastSync">just now</span></div>
+          <div class="text-xs text-white/70">10 sources, last sync <span id="lastSync">just now</span></div>
           <button id="syncNow" class="mt-2 w-full text-[11px] uppercase tracking-wider py-2 rounded-lg bg-babcom-500/10 text-babcom-300 hover:bg-babcom-500/20 transition">Sync now</button>
         </div>
       </div>

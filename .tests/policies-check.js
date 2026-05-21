@@ -33,7 +33,15 @@ const sandbox = {
   },
   lucide:  { createIcons() {} },
   setTimeout: () => 0,
-  URL: global.URL
+  /* Browser-ish globals the viewer needs : */
+  atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+  Buffer: Buffer,
+  TextDecoder: global.TextDecoder,
+  Blob: global.Blob || class { constructor(parts, opts) { this.parts = parts; this.type = (opts || {}).type || ''; } },
+  URL: {
+    createObjectURL: () => 'blob:test/' + Math.random().toString(36).slice(2),
+    revokeObjectURL: () => {}
+  }
 };
 sandbox.window = sandbox;
 function MockChart() { return { destroy() {} }; }
@@ -230,6 +238,100 @@ check('picker doesn\'t leak XSS payload either',   peh.indexOf(evilTitle) === -1
 
 /* cleanup */
 DATA.deleteUserPolicy(evil.policy.id);
+
+/* --------------------------------------------------------------------- */
+console.log('\n[11] In-app policy viewer');
+check('Views.openPolicyViewer is a function',       typeof Views.openPolicyViewer === 'function');
+check('every seeded policy now ships sections[]',   seeded.every(p => Array.isArray(p.sections) && p.sections.length > 0));
+check('Responsible AI Use Policy has \u00a73 section', (seeded.find(p => p.id === 'pol-ai-use').sections.find(s => s.id === 's3')) != null);
+check('Responsible AI Use \u00a73 mentions high-risk', /high-risk/i.test(seeded.find(p => p.id === 'pol-ai-use').sections.find(s => s.id === 's3').body));
+
+const viewerHtmls = [];
+UI.openModal = (h) => { viewerHtmls.push(h); };
+try { Views.openPolicyViewer('pol-ai-use'); } catch (e) {}
+UI.openModal = origOpen;
+const vh = viewerHtmls[0] || '';
+check('viewer modal opened for seeded policy',      vh.length > 0);
+check('viewer header shows policy title',           vh.indexOf('Responsible AI Use Policy') >= 0);
+check('viewer header shows owner field',            /kpi-label">Owner/.test(vh));
+check('viewer header shows next-review field',      /kpi-label">Next review/.test(vh));
+check('viewer renders each section title',          seeded.find(p => p.id === 'pol-ai-use').sections.every(s => vh.indexOf(UI.htmlEscape(s.title)) >= 0));
+check('viewer renders \u00a7 numbering',            (vh.match(/\u00a7\d+/g) || []).length >= 6);
+check('seeded viewer does NOT contain raw iframe',  vh.indexOf('<iframe') === -1);
+
+/* highlightSectionId path */
+const viewerHl = [];
+UI.openModal = (h) => { viewerHl.push(h); };
+try { Views.openPolicyViewer('pol-ai-use', { highlightSectionId: 's3' }); } catch (e) {}
+UI.openModal = origOpen;
+const vhl = viewerHl[0] || '';
+check('highlight banner appears when called from demo', /requires updating section/.test(vhl));
+check('highlight badge appears on the section',     /NEEDS UPDATE/.test(vhl));
+
+/* XSS on viewer: a malicious policy title must NOT leak. */
+const xssVw = DATA.addUserPolicy({
+  title:       '<img src=x onerror=alert(7)>',
+  description: '"><script>alert(7)</script>',
+  format:      'markdown',
+  fileName:    'evil.md',
+  fileSize:    7
+}, Buffer.from('# heading\n<script>alert(7)</script>').toString('base64'), 'text/markdown');
+check('upload of evil markdown accepted',           xssVw.ok);
+const evilViewer = [];
+UI.openModal = (h) => { evilViewer.push(h); };
+try { Views.openPolicyViewer(xssVw.policy.id); } catch (e) {}
+UI.openModal = origOpen;
+const evh = evilViewer[0] || '';
+check('viewer escapes evil title',                  evh.indexOf('<img src=x onerror=alert(7)>') === -1);
+check('viewer escapes script tags in markdown body',evh.indexOf('<script>alert(7)</script>') === -1);
+check('viewer markdown still produced a heading',   /<h\d[^>]*>\s*heading/i.test(evh));
+DATA.deleteUserPolicy(xssVw.policy.id);
+
+/* --------------------------------------------------------------------- */
+console.log('\n[12] Demo scenario (trigger regulatory change)');
+check('Views.runDemoScenario is a function',        typeof Views.runDemoScenario === 'function');
+check('Views.resetDemoScenario is a function',      typeof Views.resetDemoScenario === 'function');
+
+const changesBefore = DATA.changes.length;
+const risksBefore   = DATA.risks.length;
+const actionsBefore = DATA.actions.length;
+const aiActChangeBefore = DATA.indexes.regulations['reg-ai-act'].lastChange;
+const ai002DriftBefore  = DATA.indexes.controls['C-AI-002'].drift;
+
+const demoModals = [];
+UI.openModal = (h) => { demoModals.push(h); };
+try { Views.runDemoScenario(); } catch (e) {}
+UI.openModal = origOpen;
+const dm = demoModals[0] || '';
+
+check('demo walkthrough modal opened',              dm.length > 0);
+check('walkthrough headline present',               /A regulatory change just landed/.test(dm));
+check('walkthrough step 1 names AI Act',            /AI Act|Article 6/.test(dm));
+check('walkthrough step 3 mentions the policy',     /Responsible AI Use Policy/.test(dm));
+check('walkthrough opens viewer at \u00a73',        /openPolicyViewer\('pol-ai-use'.*s3/.test(dm));
+
+check('demo inserted exactly 1 new change',         DATA.changes.length === changesBefore + 1);
+check('new change is at top of the list',           DATA.changes[0].demo === true && DATA.changes[0].regId === 'reg-ai-act');
+check('AI Act lastChange updated',                  DATA.indexes.regulations['reg-ai-act'].lastChange !== aiActChangeBefore);
+check('C-AI-002 drift increased',                   DATA.indexes.controls['C-AI-002'].drift > ai002DriftBefore);
+check('new P1 risk created',                        DATA.risks.length === risksBefore + 1 && DATA.risks[DATA.risks.length - 1].severity === 'critical');
+check('new action targets pol-ai-use \u00a73',
+  DATA.actions.length === actionsBefore + 1 &&
+  DATA.actions[DATA.actions.length - 1].policyId === 'pol-ai-use' &&
+  DATA.actions[DATA.actions.length - 1].policySectionId === 's3');
+
+/* Running again must not double-apply. */
+try { Views.runDemoScenario(); } catch (e) {}
+check('second call is idempotent (no double change)', DATA.changes.length === changesBefore + 1);
+check('second call is idempotent (no double risk)',   DATA.risks.length === risksBefore + 1);
+
+/* Reset rolls everything back. */
+try { Views.resetDemoScenario(); } catch (e) {}
+check('reset restores changes length',              DATA.changes.length === changesBefore);
+check('reset restores risks length',                DATA.risks.length === risksBefore);
+check('reset restores actions length',              DATA.actions.length === actionsBefore);
+check('reset restores AI Act lastChange',           DATA.indexes.regulations['reg-ai-act'].lastChange === aiActChangeBefore);
+check('reset restores C-AI-002 drift',              DATA.indexes.controls['C-AI-002'].drift === ai002DriftBefore);
 
 console.log('\nResult:  \x1b[32m' + ok + ' passed\x1b[0m, \x1b[31m' + fail + ' failed\x1b[0m');
 process.exit(fail === 0 ? 0 : 1);
