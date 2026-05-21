@@ -138,9 +138,8 @@
     }
   });
 
-  /* ---- Sync now button --------------------------------------------------- */
+  /* ---- Bootstrap --------------------------------------------------------- */
   document.addEventListener('DOMContentLoaded', () => {
-    /* Render */
     renderNav();
     renderPersona();
     renderView();
@@ -152,15 +151,40 @@
       if (window.lucide) lucide.createIcons();
     }, 350);
 
+    /* Start the live engine (clock, activity feed, countdowns, hot events). */
+    if (window.Live) {
+      Live.start();
+      Live.subscribe((ev) => {
+        /* If this was a HOT event AND the user is currently viewing a surface
+           that includes the impacted regulation, refresh that view so the new
+           change appears with a NEW pulse. */
+        if (!ev.regId) return;
+        const r = state.route;
+        if (r === 'dashboard' || r === 'radar' || r === 'drift' || r === ('regulation/' + ev.regId)) {
+          renderView();
+        }
+      });
+    }
+
+    /* Probe the server for cloud-hosted policies. If the API is up we pull
+       the catalogue and re-render the policies view so the user sees them
+       on first paint. If the API isn't configured (no BLOB_READ_WRITE_TOKEN)
+       this returns null silently and we stay in local-only mode. */
+    if (window.CloudPolicies && window.DATA && DATA.refreshServerPolicies) {
+      DATA.refreshServerPolicies().then((list) => {
+        if (list && state.route === 'policies') renderView();
+      }).catch(() => { /* swallow; we just stay local */ });
+    }
+
     document.getElementById('syncNow').addEventListener('click', () => {
       const btn = document.getElementById('syncNow');
       btn.textContent = 'Syncing…';
       btn.disabled = true;
+      if (window.Live) Live.syncNow();
       setTimeout(() => {
-        document.getElementById('lastSync').textContent = 'just now';
         btn.textContent = '✓ Synced';
         setTimeout(() => { btn.textContent = 'Sync now'; btn.disabled = false; }, 1400);
-      }, 900);
+      }, 700);
     });
 
 

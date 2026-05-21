@@ -10,6 +10,7 @@ const files = [
   'assets/js/data.js',
   'assets/js/risk-engine.js',
   'assets/js/components.js',
+  'assets/js/live.js',
   'assets/js/views.js',
   'assets/js/app.js'
 ];
@@ -108,7 +109,7 @@ const renderTargets = [
   ['gaps',              () => Views.gaps(),                             ['Compliance Gaps','Critical','High']],
   ['actions',           () => Views.actions(),                          ['Preventive Actions','Planned','In progress','Done']],
   ['evidence',          () => Views.evidence(),                         ['Evidence Vault','Expired','Healthy']],
-  ['controls',          () => Views.controls(),                         ['Controls Library','Maturity','Linked policy','openPolicyPickerModal']],
+  ['controls',          () => Views.controls(),                         ['Framework controls','Operational controls','Maturity','Linked policy','openPolicyPickerModal']],
   ['policies',          () => Views.policies(),                         ['Internal Policies','Upload policy','Data Protection Policy','Encryption Standard','Responsible AI Use Policy','DRAFT']],
   ['team',              () => Views.team(),                             ['Aarav Mehta','Priya Sharma','Ananya Reddy']],
   ['sources',           () => Views.sources(),                          ['EUR-Lex','EDPB','ENISA','NIST','CISA','CERT-In']],

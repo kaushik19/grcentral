@@ -41,7 +41,7 @@ window.Views = (() => {
             <div>
               <div class="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Good evening, ${persona.name.split(' ')[0]}</div>
               <h2 class="text-2xl font-extrabold tracking-tight">Enterprise compliance posture</h2>
-              <p class="text-sm text-white/55 mt-1">10 active regulatory feeds · ${ctx.regulations.length} regulations tracked · last sync 12 min ago</p>
+              <p class="text-sm text-white/55 mt-1">10 active regulatory feeds · ${ctx.regulations.length} regulations tracked · last sync <span data-live-since="${Date.now() - 12000}">just now</span></p>
             </div>
             ${UI.badgeForBand(enterprise.band)}
           </div>
@@ -64,10 +64,10 @@ window.Views = (() => {
         </div>
 
         <div class="col-span-12 lg:col-span-4 grid grid-cols-2 gap-4">
-          ${UI.kpiTile({ label: 'Open Risks',             value: openRisks, delta: '+2 this week', deltaPositive: false, icon: 'alert-triangle', color: '#fbbf24' })}
-          ${UI.kpiTile({ label: 'Critical',               value: criticalR, delta: '+1 this week', deltaPositive: false, icon: 'octagon-alert',  color: '#fb7185' })}
-          ${UI.kpiTile({ label: 'Aged Evidence',          value: evidenceOld, delta: '-1 today',    deltaPositive: true,  icon: 'file-clock',     color: '#a78bfa' })}
-          ${UI.kpiTile({ label: 'Reg. changes · 7d',      value: recentChg, delta: 'live',          deltaPositive: true,  icon: 'radio-tower',    color: '#22d3ee' })}
+          ${UI.kpiTile({ label: 'Open Risks',             value: openRisks, delta: '+2 this week', deltaPositive: false, icon: 'alert-triangle', color: '#fbbf24', route: 'gaps'     })}
+          ${UI.kpiTile({ label: 'Critical',               value: criticalR, delta: '+1 this week', deltaPositive: false, icon: 'octagon-alert',  color: '#fb7185', route: 'gaps'     })}
+          ${UI.kpiTile({ label: 'Aged Evidence',          value: evidenceOld, delta: '-1 today',    deltaPositive: true,  icon: 'file-clock',     color: '#a78bfa', route: 'evidence' })}
+          ${UI.kpiTile({ label: 'Reg. changes · 7d',      value: recentChg, delta: 'live',          deltaPositive: true,  icon: 'radio-tower',    color: '#22d3ee', route: 'radar'    })}
         </div>
       </div>
 
@@ -387,14 +387,17 @@ window.Views = (() => {
           <div class="gr-card p-6 fade-up fade-up-2">
             <h3 class="font-bold text-[15px] tracking-tight mb-3">Source health</h3>
             <div class="space-y-2">
-              ${DATA.sources.map(s => `
+              ${DATA.sources.map(s => {
+                const syncedAt = Date.now() - (s.lastSyncMin || 0) * 60_000;
+                return `
                 <div class="flex items-center justify-between text-sm">
                   <div class="flex items-center gap-2">
-                    <span class="h-2 w-2 rounded-full ${s.status === 'healthy' ? 'bg-accent-emerald' : 'bg-accent-amber'}"></span>
+                    <span class="h-2 w-2 rounded-full live-fresh-pulse" style="background:${s.status === 'healthy' ? '#34d399' : '#fbbf24'}"></span>
                     <span class="font-medium">${s.name}</span>
                   </div>
-                  <span class="text-[11px] text-white/40">${s.lastSyncMin} min ago</span>
-                </div>`).join('')}
+                  <span class="text-[11px] text-white/40" data-live-since="${syncedAt}">${s.lastSyncMin} min ago</span>
+                </div>`;
+              }).join('')}
             </div>
           </div>
         </div>
@@ -637,59 +640,158 @@ DriftScore =<br/>
   /* ====================================================================== */
   function gaps() {
     const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    const sorted = [...DATA.risks].sort((a,b) => sevOrder[a.severity] - sevOrder[b.severity]);
+    const filter   = window.__gapsFilter || {};
+    const all      = DATA.risks.slice();
+
+    /* Apply optional filters (policyId, regId, severity). */
+    const filtered = all.filter(function (r) {
+      if (filter.policyId && r.sourcePolicyId !== filter.policyId && r.policyId !== filter.policyId) return false;
+      if (filter.regId    && r.regId !== filter.regId)         return false;
+      if (filter.severity && r.severity !== filter.severity)   return false;
+      return true;
+    });
+
+    /* Aggregate by policy → list of (regulation → gaps). */
+    const byPolicy = {};
+    filtered.forEach(function (r) {
+      const polId = r.sourcePolicyId || r.policyId || '_unattributed';
+      if (!byPolicy[polId]) byPolicy[polId] = { policyId: polId, items: [] };
+      byPolicy[polId].items.push(r);
+    });
+
+    /* Build a "policy first, then unattributed" order, each group sorted by severity. */
+    const policyGroups = Object.keys(byPolicy)
+      .filter(function (k) { return k !== '_unattributed'; })
+      .map(function (k) { return byPolicy[k]; })
+      .concat(byPolicy._unattributed ? [byPolicy._unattributed] : []);
+    policyGroups.forEach(function (g) {
+      g.items.sort(function (a, b) { return sevOrder[a.severity] - sevOrder[b.severity]; });
+    });
+
+    /* Build framework filter chips. */
+    const fwFilterChips = ['<button class="chip ' + (!filter.regId ? 'chip-active' : '') + '" onclick="Views.setGapsFilter(\'regId\', null)">All frameworks</button>']
+      .concat(DATA.regulations.map(function (reg) {
+        const count = all.filter(function (r) { return r.regId === reg.id; }).length;
+        if (!count) return '';
+        return '<button class="chip ' + (filter.regId === reg.id ? 'chip-active' : '') + '" onclick="Views.setGapsFilter(\'regId\', \'' + UI.htmlEscape(reg.id) + '\')">' + UI.htmlEscape(reg.shortTitle) + ' · ' + count + '</button>';
+      })).join('');
+
+    /* Active-filter banner (when scoped to a single policy or framework). */
+    let activeBanner = '';
+    if (filter.policyId) {
+      const pol = DATA.getPolicyById(filter.policyId);
+      activeBanner = pol
+        ? '<div class="mb-4 rounded-lg border border-babcom-500/30 bg-babcom-500/10 px-4 py-2 flex items-center gap-3 text-[12px]">' +
+            '<i data-lucide="filter" class="w-3.5 h-3.5 text-babcom-200"></i>' +
+            '<span>Showing gaps for policy <span class="font-semibold text-white">' + UI.htmlEscape(pol.title) + '</span></span>' +
+            '<button class="ml-auto text-babcom-200 hover:text-white text-[11px] underline" onclick="Views.clearGapsFilter()">Clear filter</button>' +
+          '</div>'
+        : '';
+    }
+
+    /* Severity totals. */
+    const critN = filtered.filter(function (r) { return r.severity === 'critical'; }).length;
+    const highN = filtered.filter(function (r) { return r.severity === 'high';     }).length;
+    const medlN = filtered.filter(function (r) { return r.severity === 'medium' || r.severity === 'low'; }).length;
+
+    /* Per-policy group renderer. */
+    const groupHtml = policyGroups.map(function (g) {
+      const pol = g.policyId === '_unattributed' ? null : DATA.getPolicyById(g.policyId);
+      const polTitle = pol ? pol.title : 'Unattributed gaps';
+      const polVersion = pol ? ' \u00b7 v' + UI.htmlEscape(pol.version) : '';
+
+      /* Per-framework rollup inside this policy. */
+      const fwRollup = {};
+      g.items.forEach(function (r) {
+        const fwName = (DATA.indexes.regulations[r.regId] || {}).shortTitle || r.regId;
+        if (!fwRollup[fwName]) fwRollup[fwName] = 0;
+        fwRollup[fwName]++;
+      });
+      const rollupChips = Object.keys(fwRollup).map(function (n) {
+        return '<span class="chip">' + UI.htmlEscape(n) + ' · ' + fwRollup[n] + '</span>';
+      }).join('');
+
+      const rows = g.items.map(function (r) {
+        const reg = DATA.indexes.regulations[r.regId];
+        const fc  = r.frameworkControlId ? DATA.getFrameworkControlById(r.frameworkControlId) : null;
+        const bu  = DATA.indexes.bu[r.businessUnitId];
+        const owner = DATA.indexes.personas[r.ownerId];
+        const overdue = r.remediationDueDays < 0;
+        const gapTypeChip = r.gapType
+          ? '<span class="chip" style="color:' + (r.gapType === 'missing' ? '#fda4af' : '#fcd34d') + ';border-color:' + (r.gapType === 'missing' ? 'rgba(251,113,133,0.4)' : 'rgba(251,191,36,0.4)') + '">' + r.gapType + '</span>'
+          : '';
+        return '<tr>' +
+                 '<td class="font-mono text-[11px] text-white/60">' + UI.htmlEscape(r.id) + '</td>' +
+                 '<td class="font-semibold">' + UI.htmlEscape(r.title) + ' ' + gapTypeChip + '</td>' +
+                 '<td class="cursor-pointer hover:text-babcom-300" data-route="regulation/' + UI.htmlEscape(r.regId) + '">' + (reg ? UI.htmlEscape(reg.shortTitle) : '—') + '</td>' +
+                 '<td class="text-[12px]">' + (fc
+                   ? '<span class="font-mono">' + UI.htmlEscape(fc.code) + '</span><div class="text-[10px] text-white/40">' + UI.htmlEscape(fc.title) + '</div>'
+                   : '<span class="text-white/40">—</span>') + '</td>' +
+                 '<td>' + (bu ? UI.htmlEscape(bu.name) : '—') + '</td>' +
+                 '<td>' + (owner ? '<div class="flex items-center gap-2">' + UI.avatar(owner) + '<span class="text-[12px]">' + UI.htmlEscape(owner.name.split(' ')[0]) + '</span></div>' : '—') + '</td>' +
+                 '<td>' + UI.badgeSeverity(r.severity) + '</td>' +
+                 '<td><span class="chip" style="background:' + (overdue ? 'rgba(251,113,133,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + (overdue ? '#fda4af' : 'inherit') + '">' + (overdue ? Math.abs(r.remediationDueDays) + 'd overdue' : r.remediationDueDays + 'd') + '</span></td>' +
+               '</tr>';
+      }).join('');
+
+      const headerLine = pol
+        ? '<div class="flex items-start justify-between gap-3 mb-3">' +
+            '<div class="min-w-0">' +
+              '<div class="text-[10px] uppercase tracking-[0.25em] text-white/40 mb-1">Internal policy</div>' +
+              '<div class="font-bold text-base truncate">' + UI.htmlEscape(polTitle) + '<span class="text-white/45 font-normal">' + polVersion + '</span></div>' +
+              '<div class="mt-1 flex flex-wrap gap-1.5">' + rollupChips + '</div>' +
+            '</div>' +
+            '<div class="flex items-center gap-2 flex-shrink-0">' +
+              '<button class="btn btn-ghost text-[11px] py-1" onclick="Views.openPolicyViewer(\'' + UI.htmlEscape(pol.id) + '\')"><i data-lucide="eye" class="w-3 h-3"></i> View policy</button>' +
+              '<button class="btn btn-ghost text-[11px] py-1" onclick="Views.openPolicyComplianceModal(\'' + UI.htmlEscape(pol.id) + '\')"><i data-lucide="shield-alert" class="w-3 h-3"></i> Coverage</button>' +
+            '</div>' +
+          '</div>'
+        : '<div class="font-bold text-base mb-3">' + UI.htmlEscape(polTitle) + '</div>';
+
+      return '<div class="gr-card p-5 mb-4 fade-up">' +
+               headerLine +
+               '<div class="overflow-x-auto"><table class="gr-table">' +
+                 '<thead><tr><th>ID</th><th>Gap</th><th>Framework</th><th>Framework control</th><th>BU</th><th>Owner</th><th>Severity</th><th>SLA</th></tr></thead>' +
+                 '<tbody>' + rows + '</tbody>' +
+               '</table></div>' +
+             '</div>';
+    }).join('');
+
     return `
-      <div class="flex items-end justify-between mb-6">
+      <div class="flex items-end justify-between mb-4 gap-4 flex-wrap">
         <div>
           <h2 class="text-2xl font-extrabold tracking-tight">Compliance Gaps</h2>
-          <p class="text-sm text-white/55 mt-1">Open risk items where current controls don't meet a regulatory obligation</p>
+          <p class="text-sm text-white/55 mt-1">Where an internal policy doesn't satisfy a framework control. Grouped by policy, with framework + control attribution.</p>
         </div>
-        <div class="flex gap-3">
-          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">Critical</div><div class="font-bold text-accent-rose">${DATA.risks.filter(r => r.severity === 'critical').length}</div></div>
-          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">High</div><div class="font-bold text-accent-amber">${DATA.risks.filter(r => r.severity === 'high').length}</div></div>
-          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">Med/Low</div><div class="font-bold">${DATA.risks.filter(r => r.severity === 'medium' || r.severity === 'low').length}</div></div>
+        <div class="flex gap-2">
+          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">Critical</div><div class="font-bold text-accent-rose">${critN}</div></div>
+          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">High</div><div class="font-bold text-accent-amber">${highN}</div></div>
+          <div class="rounded-lg border border-white/5 px-4 py-2"><div class="text-[10px] uppercase tracking-widest text-white/40">Med/Low</div><div class="font-bold">${medlN}</div></div>
         </div>
       </div>
 
-      <div class="gr-card p-6 fade-up">
-        <div class="overflow-x-auto">
-          <table class="gr-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Regulation</th>
-                <th>Control</th>
-                <th>BU</th>
-                <th>Owner</th>
-                <th>Severity</th>
-                <th>SLA</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sorted.map(r => {
-                const reg = DATA.indexes.regulations[r.regId];
-                const ctrl = DATA.indexes.controls[r.controlId];
-                const bu = DATA.indexes.bu[r.businessUnitId];
-                const owner = DATA.indexes.personas[r.ownerId];
-                const overdue = r.remediationDueDays < 0;
-                return `
-                <tr>
-                  <td class="font-mono text-[11px] text-white/60">${r.id}</td>
-                  <td class="font-semibold">${r.title}</td>
-                  <td class="cursor-pointer hover:text-babcom-300" data-route="regulation/${reg.id}">${reg.shortTitle}</td>
-                  <td class="text-[12px]">${ctrl?.id ?? '—'}<div class="text-[10px] text-white/40">${ctrl?.name ?? ''}</div></td>
-                  <td>${bu?.name ?? '—'}</td>
-                  <td><div class="flex items-center gap-2">${UI.avatar(owner)}<span class="text-[12px]">${owner.name.split(' ')[0]}</span></div></td>
-                  <td>${UI.badgeSeverity(r.severity)}</td>
-                  <td><span class="chip" style="background:${overdue ? 'rgba(251,113,133,0.15)' : 'rgba(255,255,255,0.05)'};color:${overdue ? '#fda4af' : 'inherit'}">${overdue ? `${Math.abs(r.remediationDueDays)}d overdue` : `${r.remediationDueDays}d`}</span></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      ${activeBanner}
+
+      <div class="flex flex-wrap items-center gap-1.5 mb-4">${fwFilterChips}</div>
+
+      ${policyGroups.length === 0
+        ? '<div class="gr-card p-8 text-center text-white/55"><i data-lucide="shield-check" class="w-8 h-8 mx-auto text-emerald-300 mb-2"></i><div class="font-semibold">No gaps in this view.</div></div>'
+        : groupHtml}
     `;
+  }
+
+  function setGapsFilter(key, value) {
+    var f = window.__gapsFilter || {};
+    if (value == null) delete f[key];
+    else               f[key] = value;
+    window.__gapsFilter = f;
+    var nav = document.querySelector('[data-route="gaps"]');
+    if (nav) nav.click();
+  }
+  function clearGapsFilter() {
+    window.__gapsFilter = {};
+    var nav = document.querySelector('[data-route="gaps"]');
+    if (nav) nav.click();
   }
 
   /* ====================================================================== */
@@ -757,31 +859,34 @@ DriftScore =<br/>
   /*  7. EVIDENCE VAULT                                                     */
   /* ====================================================================== */
   function evidence() {
+    const autoCount = DATA.evidence.filter(function (e) { return e.auto === true; }).length;
     return `
       <div class="flex items-end justify-between mb-6">
         <div>
           <h2 class="text-2xl font-extrabold tracking-tight">Evidence Vault</h2>
-          <p class="text-sm text-white/55 mt-1">Control evidence with freshness tracking. Feeds the Evidence Aging factor in Risk Drift.</p>
+          <p class="text-sm text-white/55 mt-1">Audit trail. Each entry ties a policy section to a framework control, so an auditor can see the proof at a glance.</p>
         </div>
       </div>
 
       <div class="grid grid-cols-12 gap-6">
         ${[
           { lbl: 'Total evidence', value: DATA.evidence.length, color: '#22d3ee', icon: 'database' },
+          { lbl: 'Auto from policies', value: autoCount, color: '#a78bfa', icon: 'wand-2' },
           { lbl: 'Expired',        value: DATA.evidence.filter(e => e.expiresInDays != null && e.expiresInDays < 0).length, color: '#fb7185', icon: 'alert-triangle' },
-          { lbl: 'Missing',        value: DATA.evidence.filter(e => e.expiresInDays == null).length, color: '#fbbf24', icon: 'help-circle' },
           { lbl: 'Healthy',        value: DATA.evidence.filter(e => e.expiresInDays != null && e.expiresInDays >= 30).length, color: '#34d399', icon: 'shield-check' }
         ].map(k => `<div class="col-span-6 md:col-span-3">${UI.kpiTile({ label: k.lbl, value: k.value, icon: k.icon, color: k.color })}</div>`).join('')}
       </div>
 
       <div class="gr-card p-6 mt-6 fade-up">
+        <div class="overflow-x-auto">
         <table class="gr-table">
           <thead>
             <tr>
               <th>ID</th>
               <th>Evidence</th>
-              <th>Control</th>
-              <th>Source</th>
+              <th>Policy</th>
+              <th>Framework control</th>
+              <th>Section / snippet</th>
               <th>Collected</th>
               <th>Status</th>
             </tr>
@@ -789,23 +894,37 @@ DriftScore =<br/>
           <tbody>
             ${DATA.evidence.map(e => {
               const ctrl = DATA.indexes.controls[e.controlId];
+              const pol  = e.policyId ? DATA.getPolicyById(e.policyId) : null;
+              const fc   = e.frameworkControlId ? DATA.getFrameworkControlById(e.frameworkControlId) : null;
+              const reg  = e.regId ? DATA.indexes.regulations[e.regId] : (fc ? DATA.indexes.regulations[fc.regId] : null);
               let badge, label;
               if (e.expiresInDays == null) { badge = 'badge-high'; label = 'MISSING'; }
               else if (e.expiresInDays < 0) { badge = 'badge-critical'; label = `${Math.abs(e.expiresInDays)}D EXPIRED`; }
               else if (e.expiresInDays < 30) { badge = 'badge-elevated'; label = `EXPIRES IN ${e.expiresInDays}D`; }
               else { badge = 'badge-stable'; label = `FRESH · ${e.expiresInDays}D LEFT`; }
+              const polCell = pol
+                ? `<button class="text-[12px] text-babcom-200 hover:text-babcom-100 underline-offset-2 hover:underline text-left truncate max-w-[200px]" onclick="Views.openPolicyViewer('${UI.htmlEscape(pol.id)}'${e.policySectionId ? `, { highlightSectionId: '${UI.htmlEscape(e.policySectionId)}' }` : ''})">${UI.htmlEscape(pol.title)}</button>`
+                : `<span class="text-[12px] text-white/40">—</span>`;
+              const fcCell = fc
+                ? `<span class="font-mono text-[11px]">${UI.htmlEscape(fc.code)}</span><div class="text-[10px] text-white/45">${reg ? UI.htmlEscape(reg.shortTitle) + ' · ' : ''}${UI.htmlEscape(fc.title)}</div>`
+                : `<span class="text-[12px]">${ctrl?.id ?? '—'}</span><div class="text-[10px] text-white/40">${ctrl?.name ?? ''}</div>`;
+              const snippetCell = e.policySectionRef || e.snippet
+                ? `<div class="text-[11px] font-semibold text-white/75">${UI.htmlEscape(e.policySectionRef || '')}</div>${e.snippet ? `<div class="text-[10.5px] text-white/50 italic truncate max-w-[280px]" title="${UI.htmlEscape(e.snippet)}">\u201c${UI.htmlEscape(e.snippet)}\u201d</div>` : ''}`
+                : `<span class="chip">${UI.htmlEscape(e.source || '')}</span>`;
               return `
                 <tr>
-                  <td class="font-mono text-[11px] text-white/60">${e.id}</td>
-                  <td class="font-semibold">${e.name}</td>
-                  <td class="text-[12px]">${ctrl?.id}<div class="text-[10px] text-white/40">${ctrl?.name ?? ''}</div></td>
-                  <td><span class="chip">${e.source}</span></td>
+                  <td class="font-mono text-[11px] text-white/60">${UI.htmlEscape(e.id)}</td>
+                  <td><div class="font-semibold text-[12.5px]">${UI.htmlEscape(e.name)}</div>${e.auto ? '<span class="chip mt-1 text-[10px]" style="color:#c4b5fd;border-color:rgba(167,139,250,0.4)">auto-derived</span>' : ''}</td>
+                  <td>${polCell}</td>
+                  <td>${fcCell}</td>
+                  <td>${snippetCell}</td>
                   <td>${e.collectedAt ? UI.fmt.date(e.collectedAt) : '—'}</td>
                   <td><span class="badge ${badge}">${label}</span></td>
                 </tr>`;
             }).join('')}
           </tbody>
         </table>
+        </div>
       </div>
     `;
   }
@@ -813,14 +932,98 @@ DriftScore =<br/>
   /* ====================================================================== */
   /*  8. CONTROLS                                                           */
   /* ====================================================================== */
+  /* For a given framework control, sum the policy coverage across the catalogue
+     so the Controls page can show "this clause is covered by N policies; M still
+     don't satisfy it." Used by the framework-controls section below. */
+  function _frameworkControlCoverage(fcId) {
+    var policies = DATA.getAllPolicies();
+    var compliant = 0, partial = 0, missing = 0, total = 0;
+    var compliantPolicies = [];
+    policies.forEach(function (p) {
+      if (!Array.isArray(p.mapsToRegulations)) return;
+      var fcEntry = DATA.getFrameworkControlById(fcId);
+      if (!fcEntry) return;
+      if (p.mapsToRegulations.indexOf(fcEntry.regId) === -1) return;
+      total++;
+      var scan = DATA.scanPolicyCompliance(p);
+      var fw = scan.byFramework.find(function (b) { return b.regId === fcEntry.regId; });
+      if (!fw) return;
+      var ctrl = fw.controls.find(function (c) { return c.id === fcId; });
+      if (!ctrl) return;
+      if (ctrl.status === 'compliant') { compliant++; compliantPolicies.push(p); }
+      else if (ctrl.status === 'partial') partial++;
+      else missing++;
+    });
+    return { total: total, compliant: compliant, partial: partial, missing: missing, compliantPolicies: compliantPolicies };
+  }
+
   function controls() {
+    /* Framework controls section : grouped by regulation, each control showing
+       cross-policy coverage so the auditor can see whose policies satisfy it. */
+    var frameworksHtml = DATA.regulations.map(function (reg) {
+      var fcs = DATA.getFrameworkControlsForReg(reg.id);
+      if (!fcs.length) return '';
+      var rowCount = fcs.length;
+      var cards = fcs.map(function (fc) {
+        var cov = _frameworkControlCoverage(fc.id);
+        var color = cov.total === 0     ? '#71717a'
+                  : cov.missing > 0     ? '#fb7185'
+                  : cov.partial > 0     ? '#fbbf24'
+                  : '#34d399';
+        var label = cov.total === 0 ? 'No policy mapped'
+                  : cov.compliant + '/' + cov.total + ' policies cover this';
+        var coveringList = cov.compliantPolicies.slice(0, 3).map(function (p) {
+          return '<button class="chip" onclick="Views.openPolicyViewer(\'' + UI.htmlEscape(p.id) + '\')">' + UI.htmlEscape(p.title) + '</button>';
+        }).join('');
+        return '<div class="rounded-lg border border-white/5 p-3 flex flex-col">' +
+                 '<div class="flex items-start justify-between gap-2 mb-1">' +
+                   '<div class="min-w-0">' +
+                     '<div class="font-mono text-[10.5px] text-white/45">' + UI.htmlEscape(fc.code) + '</div>' +
+                     '<div class="font-bold text-[13px] leading-snug">' + UI.htmlEscape(fc.title) + '</div>' +
+                   '</div>' +
+                   '<span class="text-[10px] uppercase tracking-widest" style="color:' + color + '">' + UI.htmlEscape(fc.severity) + '</span>' +
+                 '</div>' +
+                 '<div class="text-[11px] text-white/55 mt-1 leading-relaxed line-clamp-2">' + UI.htmlEscape(fc.summary) + '</div>' +
+                 '<div class="mt-2 flex items-center gap-2">' +
+                   '<span class="h-1.5 w-1.5 rounded-full" style="background:' + color + '"></span>' +
+                   '<span class="text-[10.5px] text-white/55">' + label + '</span>' +
+                 '</div>' +
+                 (coveringList ? '<div class="mt-2 flex flex-wrap gap-1">' + coveringList + '</div>' : '') +
+               '</div>';
+      }).join('');
+      return '<div class="gr-card p-5 mb-4 fade-up">' +
+               '<div class="flex items-center justify-between mb-3">' +
+                 '<div>' +
+                   '<div class="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">Framework</div>' +
+                   '<div class="font-bold text-base">' + UI.htmlEscape(reg.shortTitle) + ' \u2014 ' + UI.htmlEscape(reg.title) + '</div>' +
+                 '</div>' +
+                 '<span class="chip">' + rowCount + ' controls</span>' +
+               '</div>' +
+               '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">' + cards + '</div>' +
+             '</div>';
+    }).join('');
+
     return `
       <div class="flex items-end justify-between mb-6">
         <div>
-          <h2 class="text-2xl font-extrabold tracking-tight">Controls Library</h2>
-          <p class="text-sm text-white/55 mt-1">Internal controls mapped to regulatory obligations · drift % from baseline</p>
+          <h2 class="text-2xl font-extrabold tracking-tight">Controls</h2>
+          <p class="text-sm text-white/55 mt-1">Frameworks (regulations) and their controls (clauses), plus our internal operational controls. Each framework control shows how many policies actually cover it.</p>
         </div>
       </div>
+
+      <div class="mb-2 flex items-center gap-2">
+        <i data-lucide="layers" class="w-4 h-4 text-babcom-300"></i>
+        <h3 class="font-bold text-sm uppercase tracking-[0.2em] text-white/75">Framework controls</h3>
+        <span class="chip">${DATA.allFrameworkControls().length}</span>
+      </div>
+      ${frameworksHtml}
+
+      <div class="mb-2 mt-8 flex items-center gap-2">
+        <i data-lucide="server-cog" class="w-4 h-4 text-babcom-300"></i>
+        <h3 class="font-bold text-sm uppercase tracking-[0.2em] text-white/75">Operational controls</h3>
+        <span class="chip">${DATA.controls.length}</span>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         ${DATA.controls.map(c => {
           const owner = DATA.indexes.personas[c.owner];
@@ -1004,16 +1207,20 @@ DriftScore =<br/>
                 </div>
                 <div class="rounded-lg border border-white/5 px-3 py-2">
                   <div class="kpi-label">Last sync</div>
-                  <div class="font-semibold text-xs mt-1">${_sb}</div>
+                  <div class="font-semibold text-xs mt-1" data-live-since="${Date.now() - (s.lastSyncMin || 0) * 60_000}">${_sb}</div>
                 </div>
               </div>
 
-              ${s.documentsTracked != null ? `
-                <div class="mt-3 flex items-center justify-between text-[11px]">
-                  <span class="text-white/45">${s.documentsTracked.toLocaleString()} documents tracked</span>
-                  <a href="${_url}" target="_blank" rel="noopener noreferrer" class="text-babcom-400 hover:text-babcom-300 font-semibold">Visit →</a>
+              <div class="mt-3 flex items-center justify-between text-[11px]">
+                <div class="flex items-center gap-1.5">
+                  <span class="h-1.5 w-1.5 rounded-full live-fresh-pulse" style="background:${statusColor}"></span>
+                  <span class="text-white/55 tabular-nums" data-live-next="${UI.htmlEscape(s.id)}">next in &mdash;</span>
                 </div>
-              ` : ''}
+                ${s.documentsTracked != null ? `<span class="text-white/45">${s.documentsTracked.toLocaleString()} documents tracked</span>` : ''}
+              </div>
+              <div class="mt-2 flex items-center justify-end text-[11px]">
+                <a href="${_url}" target="_blank" rel="noopener noreferrer" class="text-babcom-400 hover:text-babcom-300 font-semibold">Visit →</a>
+              </div>
             </div>`;
         }).join('')}
       </div>
@@ -1599,7 +1806,8 @@ DriftScore = (<br/>
     return '<span class="badge badge-stable"><span class="badge-dot" style="background:#34d399"></span>PUBLISHED</span>';
   }
   function _sourceBadge(source) {
-    if (source === 'uploaded') return '<span class="pill-soft" style="color:#ffc3a3;border-color:rgba(255,90,31,0.35)"><i data-lucide="upload-cloud" class="w-3 h-3"></i>Uploaded</span>';
+    if (source === 'server')   return '<span class="pill-soft" style="color:#a5f3fc;border-color:rgba(34,211,238,0.45)" title="Visible to every visitor of this deployment"><i data-lucide="cloud" class="w-3 h-3"></i>Server</span>';
+    if (source === 'uploaded') return '<span class="pill-soft" style="color:#ffc3a3;border-color:rgba(255,90,31,0.35)" title="Stored in this browser only"><i data-lucide="upload-cloud" class="w-3 h-3"></i>Local</span>';
     return '<span class="pill-soft"><i data-lucide="package" class="w-3 h-3"></i>Seeded</span>';
   }
 
@@ -1620,9 +1828,23 @@ DriftScore = (<br/>
       published:    all.filter(function (p) { return p.status === 'published'; }).length,
       draft:        all.filter(function (p) { return p.status === 'draft'; }).length,
       uploaded:     all.filter(function (p) { return p.source === 'uploaded'; }).length,
+      server:       all.filter(function (p) { return p.source === 'server';   }).length,
       dueIn90:      all.filter(function (p) { var d = _daysUntil(p.nextReviewDate); return d != null && d >= 0 && d <= 90; }).length,
       overdue:      all.filter(function (p) { var d = _daysUntil(p.nextReviewDate); return d != null && d < 0; }).length
     };
+    var cloudOn = !!(window.CloudPolicies && window.CloudPolicies.isAvailable());
+    var storageBanner = cloudOn
+      ? '<div class="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-4 py-2 flex items-center gap-3 text-[12px]">' +
+          '<i data-lucide="cloud" class="w-3.5 h-3.5 text-cyan-300"></i>' +
+          '<span><span class="font-semibold text-cyan-100">Server storage active.</span> Uploads land on Vercel Blob and are visible to every visitor of this deployment.' +
+          (totals.server ? ' <span class="text-white/55">' + totals.server + ' policy' + (totals.server === 1 ? '' : 's') + ' currently hosted.</span>' : '') +
+          '</span>' +
+          '<button class="ml-auto text-cyan-200 hover:text-white text-[11px] underline" onclick="DATA.refreshServerPolicies().then(function(){var n=document.querySelector(\'[data-route=&quot;policies&quot;]\');if(n)n.click();})">Refresh</button>' +
+        '</div>'
+      : '<div class="mb-4 rounded-lg border border-white/10 bg-white/[0.015] px-4 py-2 flex items-center gap-3 text-[12px] text-white/65">' +
+          '<i data-lucide="hard-drive" class="w-3.5 h-3.5 text-white/50"></i>' +
+          '<span><span class="font-semibold">Local-only mode.</span> Uploads stay in this browser. Configure <code class="text-white/85">BLOB_READ_WRITE_TOKEN</code> on Vercel to make uploads visible to everyone.</span>' +
+        '</div>';
     var attest = all.reduce(function (acc, p) {
       acc.req  += (p.attestations && p.attestations.required)  || 0;
       acc.done += (p.attestations && p.attestations.completed) || 0;
@@ -1656,6 +1878,8 @@ DriftScore = (<br/>
         '</div>',
       '</div>',
 
+      storageBanner,
+
       '<div class="flex flex-wrap items-center gap-2 mb-5">',
         '<span class="text-[10px] uppercase tracking-widest text-white/40 mr-1">Status</span>',
         filterPill('All', 'all', 'status', filter.status),
@@ -1665,7 +1889,8 @@ DriftScore = (<br/>
         '<span class="text-[10px] uppercase tracking-widest text-white/40 ml-4 mr-1">Source</span>',
         filterPill('All', 'all', 'source', filter.source),
         filterPill('Seeded', 'seeded', 'source', filter.source),
-        filterPill('Uploaded', 'uploaded', 'source', filter.source),
+        filterPill('Server', 'server', 'source', filter.source),
+        filterPill('Local', 'uploaded', 'source', filter.source),
       '</div>',
 
       view.length === 0
@@ -1728,6 +1953,7 @@ DriftScore = (<br/>
             '<div class="text-white/40 text-[10px] truncate">' + UI.htmlEscape(owner ? owner.role : '—') + (approver ? ' · approved by ' + UI.htmlEscape(approver.name.split(' ')[0]) : '') + '</div>',
           '</div>',
           '<div class="ml-auto flex items-center gap-1">',
+            '<button class="btn btn-ghost text-[11px] py-1.5" title="Compliance coverage" onclick="Views.openPolicyComplianceModal(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="shield-alert" class="w-3 h-3"></i> Coverage</button>',
             '<button class="btn btn-primary text-[11px] py-1.5" onclick="Views.openPolicyViewer(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="eye" class="w-3 h-3"></i> View</button>',
             '<button class="btn btn-ghost text-[11px] py-1.5" title="Open in new tab" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3 h-3"></i></button>',
             p.source === 'uploaded'
@@ -1752,7 +1978,16 @@ DriftScore = (<br/>
   function openPolicyDocument(policyId) {
     var p = DATA.getPolicyById(policyId);
     if (!p) return;
-    /* Uploaded with a file → reconstitute a blob URL and open in new tab. */
+    /* Server-hosted policy : the file lives on Vercel Blob's public CDN.
+       Open the CDN URL directly in a new tab. */
+    if (p.source === 'server' && p.fileUrl) {
+      var safeFw = UI.safeUrl(p.fileUrl);
+      if (safeFw !== '#') {
+        window.open(p.fileUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+    /* Local upload : reconstitute a blob URL and open in new tab. */
     if (p.source === 'uploaded' && p.hasFile) {
       var f = DATA.getPolicyFile(policyId);
       if (f && f.base64) {
@@ -1777,11 +2012,32 @@ DriftScore = (<br/>
   /* ---- Delete uploaded policy -------------------------------------------*/
   function deletePolicy(policyId) {
     var p = DATA.getPolicyById(policyId);
-    if (!p || p.source !== 'uploaded') return;
-    if (typeof confirm === 'function' && !confirm('Delete "' + p.title + '"? This will also unlink it from any controls.')) return;
+    if (!p || (p.source !== 'uploaded' && p.source !== 'server')) return;
+    var label = p.source === 'server'
+      ? 'Delete "' + p.title + '" from the server? This removes it for every visitor and cannot be undone.'
+      : 'Delete "' + p.title + '"? This will also unlink it from any controls.';
+    if (typeof confirm === 'function' && !confirm(label)) return;
+
+    if (p.source === 'server') {
+      /* Optimistic UI: drop the row immediately, then call the server. If the
+         delete fails we re-pull the catalogue so the row reappears. */
+      var nav = document.querySelector('[data-route="policies"]');
+      DATA.deleteServerPolicy(policyId).then(function (ok) {
+        if (!ok) {
+          UI.toast({ title: 'Delete failed', body: 'The server could not delete this policy. Please retry.', ttl: 5000 });
+        } else {
+          UI.toast({ title: 'Policy deleted', body: 'Removed from server storage.', ttl: 3500 });
+        }
+        return DATA.refreshServerPolicies();
+      }).then(function () {
+        if (nav) nav.click();
+      });
+      return;
+    }
+
     DATA.deleteUserPolicy(policyId);
-    var nav = document.querySelector('[data-route="policies"]');
-    if (nav) nav.click();
+    var navLocal = document.querySelector('[data-route="policies"]');
+    if (navLocal) navLocal.click();
   }
 
   /* ====================================================================== */
@@ -1882,10 +2138,18 @@ DriftScore = (<br/>
             '<div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pb-1">' + regsOpts + '</div>',
             '<div class="font-bold text-sm mt-5 mb-3">Implemented by controls</div>',
             '<div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pb-1">' + ctrlsOpts + '</div>',
+
+            /* Verification panel : shows analyzer findings + projected drift impact. */
+            '<div class="mt-5 flex items-center justify-between">',
+              '<div class="font-bold text-sm">Policy verification</div>',
+              '<button id="pol-verify" class="btn btn-ghost text-[11px] py-1" onclick="Views.runPolicyVerification()"><i data-lucide="shield-check" class="w-3 h-3"></i> Run checks</button>',
+            '</div>',
+            '<div id="pol-verify-out" class="mt-2 text-[11px] text-white/45">Click <span class="text-white/70">Run checks</span> to scan metadata and content for risks before saving.</div>',
+
             '<div id="pol-error" class="mt-4 text-xs text-accent-rose"></div>',
             '<div class="mt-auto pt-4 grid grid-cols-2 gap-2">',
               '<button class="btn btn-ghost text-xs justify-center" onclick="UI.closeModal()">Cancel</button>',
-              '<button class="btn btn-primary text-xs justify-center" onclick="Views.savePolicyUpload()"><i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy</button>',
+              '<button id="pol-save-btn" class="btn btn-primary text-xs justify-center" onclick="Views.savePolicyUpload()"><i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy</button>',
             '</div>',
           '</div>',
         '</div>',
@@ -1947,7 +2211,21 @@ DriftScore = (<br/>
         format:   fmt,
         base64:   b64
       };
-      if (info) info.innerHTML = '<i data-lucide="file" class="w-3 h-3 inline mr-1"></i><span class="text-white/80 font-semibold">' + UI.htmlEscape(f.name) + '</span> · <span class="text-white/50">' + _fmtBytes(f.size) + ' · ' + UI.htmlEscape(fmt.toUpperCase()) + '</span>';
+      /* Magic-byte sniff for PDFs : warn early if the file isn't really one. */
+      var pdfWarning = '';
+      if (fmt === 'pdf') {
+        try {
+          var head = atob((b64 || '').slice(0, 8)).slice(0, 5);
+          if (head !== '%PDF-') {
+            pdfWarning = '<div class="mt-1 text-[11px] text-amber-300">' +
+                           '<i data-lucide="alert-triangle" class="w-3 h-3 inline mr-1"></i>' +
+                           'This file does not start with the standard <code>%PDF-</code> header. ' +
+                           'It will save, but the in-app preview may not render.' +
+                         '</div>';
+          }
+        } catch (_) { /* ignore */ }
+      }
+      if (info) info.innerHTML = '<i data-lucide="file" class="w-3 h-3 inline mr-1"></i><span class="text-white/80 font-semibold">' + UI.htmlEscape(f.name) + '</span> · <span class="text-white/50">' + _fmtBytes(f.size) + ' · ' + UI.htmlEscape(fmt.toUpperCase()) + '</span>' + pdfWarning;
       if (window.lucide) lucide.createIcons();
     };
     reader.onerror = function () {
@@ -1956,58 +2234,304 @@ DriftScore = (<br/>
     reader.readAsDataURL(f);
   }
 
-  function savePolicyUpload() {
-    var err = document.getElementById('pol-error');
-    function fail(msg) { if (err) err.textContent = msg; }
-
-    var titleEl = document.getElementById('pol-title');
-    var title   = titleEl ? titleEl.value.trim() : '';
-    if (!title) return fail('Title is required.');
-
-    var staged = window.__polUploadStaged || null;
-    var urlEl  = document.getElementById('pol-url');
-    var url    = urlEl ? urlEl.value.trim() : '';
-    if (!staged && !url) return fail('Attach a file or provide an external URL.');
-    if (url) {
-      var safe = UI.safeUrl(url);
-      if (safe === '#') return fail('External URL must be a valid http(s) URL.');
-    }
-
+  function _collectUploadMeta() {
     var getVal = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
     var checked = function (name) {
       return Array.prototype.slice.call(document.querySelectorAll('input[name="' + name + '"]:checked'))
         .map(function (i) { return i.value; });
     };
-
-    var meta = {
-      title:           title,
-      version:         getVal('pol-version') || '1.0',
-      ownerId:         getVal('pol-owner')    || null,
-      approverId:      getVal('pol-approver') || null,
-      effectiveDate:   getVal('pol-effective') || null,
-      nextReviewDate:  getVal('pol-review')    || null,
-      status:          getVal('pol-status') === 'draft' ? 'draft' : 'published',
-      documentUrl:     url || null,
-      description:     getVal('pol-desc'),
-      mapsToRegulations:    checked('pol-regs'),
-      implementedByControls:checked('pol-ctrls'),
-      format:          staged ? staged.format : 'link',
-      fileName:        staged ? staged.fileName : null,
-      fileSize:        staged ? staged.fileSize : 0
+    var staged = window.__polUploadStaged || null;
+    return {
+      meta: {
+        title:           (getVal('pol-title') || '').trim(),
+        version:         getVal('pol-version') || '1.0',
+        ownerId:         getVal('pol-owner')    || null,
+        approverId:      getVal('pol-approver') || null,
+        effectiveDate:   getVal('pol-effective') || null,
+        nextReviewDate:  getVal('pol-review')    || null,
+        status:          getVal('pol-status') === 'draft' ? 'draft' : 'published',
+        documentUrl:     (getVal('pol-url') || '').trim() || null,
+        description:     getVal('pol-desc'),
+        mapsToRegulations:    checked('pol-regs'),
+        implementedByControls:checked('pol-ctrls'),
+        format:          staged ? staged.format : 'link',
+        fileName:        staged ? staged.fileName : null,
+        fileSize:        staged ? staged.fileSize : 0
+      },
+      staged: staged
     };
+  }
 
-    var res = DATA.addUserPolicy(meta, staged ? staged.base64 : null, staged ? staged.mimeType : null);
-    if (!res.ok) return fail(res.error);
+  function _sevDot(sev) {
+    return '<span class="dot"></span>';
+  }
+  function _renderComplianceBreakdown(scan) {
+    if (!scan || !Array.isArray(scan.byFramework) || scan.byFramework.length === 0) {
+      return '<div class="text-white/45 text-[11px] mt-2">Map this policy to a regulation to run framework-control coverage.</div>';
+    }
+    var s = scan.summary;
+    var headerChips =
+      '<span class="chip" style="color:#86efac;border-color:rgba(52,211,153,0.4)">' + s.compliantControls + ' compliant</span>' +
+      (s.partialControls ? '<span class="chip" style="color:#fcd34d;border-color:rgba(251,191,36,0.4)">' + s.partialControls + ' partial</span>' : '') +
+      (s.missingControls ? '<span class="chip" style="color:#fda4af;border-color:rgba(251,113,133,0.4)">' + s.missingControls + ' missing</span>' : '') +
+      '<span class="chip">' + s.coveragePct + '% coverage</span>';
+
+    var fwBlocks = scan.byFramework.map(function (fw) {
+      var rows = fw.controls.map(function (fc) {
+        var color = fc.status === 'compliant' ? '#34d399'
+                  : fc.status === 'partial'   ? '#fbbf24'
+                  : '#fb7185';
+        var hint  = fc.status === 'compliant' ? (fc.evidenceRefs[0] || 'matched')
+                  : fc.status === 'partial'   ? 'only one weak match'
+                  : 'no reference found';
+        return '<li class="flex items-start gap-2 py-1">' +
+                 '<span class="h-1.5 w-1.5 rounded-full mt-1.5 flex-shrink-0" style="background:' + color + '"></span>' +
+                 '<div class="min-w-0 flex-1">' +
+                   '<div class="text-[11px] flex flex-wrap items-baseline gap-1">' +
+                     '<span class="font-mono text-white/55">' + UI.htmlEscape(fc.code) + '</span>' +
+                     '<span class="text-white/85 font-semibold truncate">' + UI.htmlEscape(fc.title) + '</span>' +
+                   '</div>' +
+                   '<div class="text-[10.5px] text-white/45 mt-0.5 truncate">' + UI.htmlEscape(hint) + '</div>' +
+                 '</div>' +
+                 '<span class="text-[10px] uppercase tracking-widest" style="color:' + color + '">' + fc.status + '</span>' +
+               '</li>';
+      }).join('');
+      return '<details class="rounded-lg border border-white/5 bg-black/20 mt-1.5" open>' +
+               '<summary class="cursor-pointer px-3 py-2 flex items-center gap-2 select-none">' +
+                 '<span class="font-semibold text-[12px]">' + UI.htmlEscape(fw.name) + '</span>' +
+                 '<span class="text-white/40 text-[11px]">' + fw.compliant + '/' + fw.total + '</span>' +
+                 (fw.missing ? '<span class="ml-1 chip" style="color:#fda4af;border-color:rgba(251,113,133,0.4)">' + fw.missing + ' missing</span>' : '') +
+                 (fw.partial ? '<span class="ml-1 chip" style="color:#fcd34d;border-color:rgba(251,191,36,0.4)">' + fw.partial + ' partial</span>' : '') +
+                 '<span class="ml-auto text-[10.5px] text-white/55">' + fw.coveragePct + '%</span>' +
+               '</summary>' +
+               '<ul class="px-3 pb-2">' + rows + '</ul>' +
+             '</details>';
+    }).join('');
+
+    return '<div class="mt-3 pt-3 border-t border-white/5">' +
+             '<div class="flex items-center justify-between mb-1">' +
+               '<div class="font-bold text-[12px]">Framework-control coverage</div>' +
+             '</div>' +
+             '<div class="flex flex-wrap items-center gap-1.5 mb-1">' + headerChips + '</div>' +
+             '<div class="max-h-56 overflow-y-auto pr-1">' + fwBlocks + '</div>' +
+           '</div>';
+  }
+  function _renderVerificationPanel(analysis, scan) {
+    var out = document.getElementById('pol-verify-out');
+    var btn = document.getElementById('pol-save-btn');
+    if (!out) return;
+    var totalRiskOpeners = ((analysis && analysis.summary) ? analysis.summary.opensRisks : 0)
+                        + ((scan && scan.summary) ? (scan.summary.missingControls + scan.summary.partialControls) : 0);
+    if ((!analysis || analysis.summary.total === 0) && (!scan || !scan.byFramework || scan.byFramework.length === 0)) {
+      out.innerHTML =
+        '<div class="flex items-center gap-2 text-emerald-300 font-semibold">' +
+          '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> No issues detected. Policy looks clean.' +
+        '</div>' +
+        '<div class="text-white/45 mt-1">Re-run after editing fields to confirm.</div>';
+      if (btn) btn.innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy';
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    var s = analysis.summary;
+    var driftPairs = Object.keys(analysis.projectedDriftDelta || {}).map(function (rid) {
+      var reg = DATA.indexes.regulations[rid];
+      return { name: reg ? reg.shortTitle : rid, delta: analysis.projectedDriftDelta[rid] };
+    }).sort(function (a, b) { return b.delta - a.delta; }).slice(0, 3);
+
+    var summaryChips =
+      (s.critical ? '<span class="chip" style="color:#fb7185;border-color:rgba(251,113,133,0.4)">' + s.critical + ' critical</span>' : '') +
+      (s.high     ? '<span class="chip" style="color:#fbbf24;border-color:rgba(251,191,36,0.4)">'  + s.high     + ' high</span>'     : '') +
+      (s.medium   ? '<span class="chip" style="color:#ff9c6b;border-color:rgba(255,90,31,0.4)">'   + s.medium   + ' medium</span>'   : '') +
+      (s.low      ? '<span class="chip">'                                                          + s.low      + ' low</span>'      : '');
+
+    var driftLine = driftPairs.length
+      ? '<div class="text-[11px] text-white/55 mt-2"><i data-lucide="trending-up" class="w-3 h-3 inline mr-1"></i>Projected drift: ' +
+          driftPairs.map(function (p) {
+            return '<span class="text-white/85 font-semibold">+' + p.delta + '</span> on ' + UI.htmlEscape(p.name);
+          }).join(', ') +
+        '</div>'
+      : '';
+
+    var findingsHtml = analysis.findings.slice(0, 6).map(function (f) {
+      return '<div class="finding sev-' + UI.htmlEscape(f.severity) + ' mt-1.5">' +
+               _sevDot(f.severity) +
+               '<div class="min-w-0">' +
+                 '<div class="text-[11.5px] font-semibold text-white/90 leading-snug">' + UI.htmlEscape(f.title) + '</div>' +
+                 (f.detail ? '<div class="text-[10.5px] text-white/55 mt-0.5 leading-snug">' + UI.htmlEscape(f.detail) + '</div>' : '') +
+                 (f.recommendation ? '<div class="text-[10.5px] text-white/45 mt-0.5 italic leading-snug">' + UI.htmlEscape(f.recommendation) + '</div>' : '') +
+               '</div>' +
+             '</div>';
+    }).join('');
+    var extra = analysis.findings.length > 6
+      ? '<div class="text-[10.5px] text-white/40 mt-1">+ ' + (analysis.findings.length - 6) + ' more on save</div>'
+      : '';
+
+    var analysisHtml = analysis && analysis.summary && analysis.summary.total > 0
+      ? ('<div class="flex flex-wrap items-center gap-1.5">' +
+           '<span class="text-white/80 font-semibold">' + s.total + ' finding' + (s.total === 1 ? '' : 's') + '</span>' +
+           summaryChips +
+         '</div>' +
+         driftLine +
+         '<div class="mt-2 max-h-40 overflow-y-auto pr-1">' + findingsHtml + extra + '</div>')
+      : '';
+
+    out.innerHTML = analysisHtml + _renderComplianceBreakdown(scan);
+
+    if (btn) {
+      if (totalRiskOpeners > 0) {
+        btn.innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save & open ' + totalRiskOpeners + ' risk' + (totalRiskOpeners === 1 ? '' : 's');
+      } else {
+        btn.innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy';
+      }
+    }
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function runPolicyVerification() {
+    var collected = _collectUploadMeta();
+    if (!collected.meta.title) {
+      var out = document.getElementById('pol-verify-out');
+      if (out) out.innerHTML = '<span class="text-accent-rose">Enter a title first so we know what we are verifying.</span>';
+      return null;
+    }
+    var staged = collected.staged;
+    var analysis = DATA.analyzePolicy(
+      collected.meta,
+      staged ? staged.base64 : null,
+      staged ? staged.mimeType : null
+    );
+    /* Scan against framework controls in addition to the metadata heuristics.
+       For the upload draft we synthesise a minimal policy-shape and decode the
+       staged file body inline so the corpus is the same as it would be post-save. */
+    var draftPolicy = {
+      id:                 '__draft__',
+      title:              collected.meta.title,
+      description:        collected.meta.description,
+      tags:               [],
+      sections:           [],
+      mapsToRegulations:  collected.meta.mapsToRegulations || [],
+      implementedByControls: collected.meta.implementedByControls || [],
+      source:             'uploaded',
+      hasFile:            !!staged,
+      format:             collected.meta.format
+    };
+    /* Inline body so `_buildScanCorpus` doesn't need to read localStorage
+       for an unsaved draft. */
+    if (staged && staged.base64 && staged.format !== 'pdf') {
+      try {
+        var bin = atob(staged.base64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var body = typeof TextDecoder !== 'undefined'
+          ? new TextDecoder('utf-8').decode(bytes)
+          : bin;
+        draftPolicy.sections.push({ id: 'body', num: 'body', title: 'Uploaded body', body: body });
+      } catch (_) { /* ignore */ }
+    }
+    var scan = DATA.scanPolicyCompliance(draftPolicy);
+
+    window.__polLastAnalysis = analysis;
+    window.__polLastScan     = scan;
+    _renderVerificationPanel(analysis, scan);
+    return analysis;
+  }
+
+  function savePolicyUpload() {
+    var err = document.getElementById('pol-error');
+    function fail(msg) { if (err) err.textContent = msg; }
+
+    var collected = _collectUploadMeta();
+    var meta = collected.meta;
+    var staged = collected.staged;
+    if (!meta.title) return fail('Title is required.');
+    if (!staged && !meta.documentUrl) return fail('Attach a file or provide an external URL.');
+    if (meta.documentUrl) {
+      var safe = UI.safeUrl(meta.documentUrl);
+      if (safe === '#') return fail('External URL must be a valid http(s) URL.');
+    }
+
+    /* Decide write path :
+       - If the cloud API answered the startup probe, send the upload to the
+         server so every visitor sees it.
+       - Otherwise persist locally to this browser's localStorage. */
+    var saveBtn = document.getElementById('pol-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Saving...'; if (window.lucide) lucide.createIcons(); }
+
+    var savePromise;
+    var useCloud = !!(window.CloudPolicies && window.CloudPolicies.isAvailable());
+    if (useCloud) {
+      savePromise = DATA.addServerPolicy(meta, staged ? staged.base64 : null, staged ? staged.mimeType : null);
+    } else {
+      savePromise = Promise.resolve(DATA.addUserPolicy(meta, staged ? staged.base64 : null, staged ? staged.mimeType : null));
+    }
+
+    savePromise.then(function (res) {
+    if (!res.ok) { if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy'; if (window.lucide) lucide.createIcons(); } return fail(res.error); }
 
     /* Auto-link controls that the user just selected to this new policy. */
     (meta.implementedByControls || []).forEach(function (cid) {
       DATA.linkControlToPolicy(cid, res.policy.id);
     });
 
+    /* Run the analyzer (if the user didn't already) and apply findings so the
+       new policy materially affects drift + open risks. */
+    var analysis = window.__polLastAnalysis;
+    if (!analysis) {
+      analysis = DATA.analyzePolicy(meta, staged ? staged.base64 : null, staged ? staged.mimeType : null);
+    }
+    var applied = DATA.applyPolicyFindings(res.policy.id, analysis);
+
+    /* Run compliance scan against framework controls and materialise the gaps. */
+    var scan = DATA.scanPolicyCompliance(res.policy);
+    var appliedScan = DATA.applyComplianceGaps(res.policy.id, scan);
+
     window.__polUploadStaged = null;
+    window.__polLastAnalysis = null;
+    window.__polLastScan     = null;
     UI.closeModal();
+
+    /* Surface what just changed and let the user jump straight to the risks. */
+    var totalOpened = applied.openedRisks.length + appliedScan.openedRisks.length;
+    if (totalOpened > 0) {
+      var worstFw = scan.summary.worstFramework;
+      var driftLine;
+      if (worstFw) {
+        driftLine = worstFw.name + ' coverage: ' + worstFw.compliant + '/' + worstFw.total +
+                    (worstFw.missing ? ' (' + worstFw.missing + ' missing)' : '') + '.';
+      } else if (analysis.summary.worstRegId) {
+        var topReg = (DATA.indexes.regulations[analysis.summary.worstRegId] || {}).shortTitle;
+        driftLine = 'Drift expected to rise on ' + topReg + (analysis.projectedDriftDelta[analysis.summary.worstRegId] ? ' (+' + analysis.projectedDriftDelta[analysis.summary.worstRegId] + ')' : '') + '.';
+      } else {
+        driftLine = 'Drift recomputed across linked regulations.';
+      }
+      window.__gapsFilter = { policyId: res.policy.id };
+      UI.toast({
+        title:   'Policy saved \u00b7 ' + totalOpened + ' risk' + (totalOpened === 1 ? '' : 's') + ' opened',
+        body:    driftLine + ' ' + (useCloud ? 'Visible to every visitor of this deployment.' : 'Stored in this browser.') + ' Review the gaps.',
+        ctaText: 'Open Gaps',
+        route:   'gaps',
+        ttl:     9000
+      });
+    } else if (scan.summary.compliantControls > 0) {
+      UI.toast({
+        title: 'Policy saved \u00b7 ' + scan.summary.compliantControls + ' framework control' + (scan.summary.compliantControls === 1 ? '' : 's') + ' covered',
+        body:  scan.summary.coveragePct + '% coverage across mapped frameworks. ' + (useCloud ? 'Visible to everyone.' : 'Stored locally.'),
+        ttl:   4500
+      });
+    } else {
+      UI.toast({
+        title: useCloud ? 'Policy saved to the server' : 'Policy saved',
+        body:  useCloud ? 'Every visitor will now see this policy.' : 'Verification found no high-severity issues.',
+        ttl:   3500
+      });
+    }
+
     var nav = document.querySelector('[data-route="policies"]');
     if (nav) nav.click();
+    }).catch(function (e) {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save policy'; if (window.lucide) lucide.createIcons(); }
+      fail(e && e.message ? e.message : 'Upload failed. Check your network and retry.');
+    });
   }
 
   /* ====================================================================== */
@@ -2182,6 +2706,82 @@ DriftScore = (<br/>
     _viewerBlobUrls.splice(0).forEach(function (u) { try { URL.revokeObjectURL(u); } catch (_) {} });
   }
 
+  /* Per-policy compliance modal : a focused view of how this one policy
+     stacks up against every framework control it claims to address. */
+  function openPolicyComplianceModal(policyId) {
+    var p = DATA.getPolicyById(policyId);
+    if (!p) return;
+    var scan = DATA.scanPolicyCompliance(p);
+
+    var s = scan.summary;
+    var fwBlocks = scan.byFramework.length === 0
+      ? '<div class="text-[12px] text-white/55 p-3 rounded-lg border border-white/5 bg-black/20">' +
+          'This policy is not mapped to any framework yet. Map it on upload to run framework-control coverage.' +
+        '</div>'
+      : scan.byFramework.map(function (fw) {
+          var rows = fw.controls.map(function (fc) {
+            var color = fc.status === 'compliant' ? '#34d399'
+                      : fc.status === 'partial'   ? '#fbbf24'
+                      : '#fb7185';
+            var label = fc.status === 'compliant' ? 'Compliant'
+                      : fc.status === 'partial'   ? 'Partial'
+                      : 'Missing';
+            var ev = fc.evidenceRefs && fc.evidenceRefs.length
+              ? '<div class="text-[10.5px] text-emerald-200/80 mt-0.5">Found in: ' + UI.htmlEscape(fc.evidenceRefs.join(', ')) + '</div>'
+              : '';
+            var snippet = fc.evidenceSnippets && fc.evidenceSnippets[0]
+              ? '<div class="text-[10.5px] text-white/45 mt-0.5 italic">\u201c' + UI.htmlEscape(fc.evidenceSnippets[0]) + '\u201d</div>'
+              : '';
+            var rec = fc.status === 'missing'
+              ? '<div class="text-[10.5px] text-white/45 mt-0.5">Add a section that addresses: ' + UI.htmlEscape(fc.summary || fc.title) + '</div>'
+              : (fc.status === 'partial'
+                  ? '<div class="text-[10.5px] text-white/45 mt-0.5">Coverage is thin: strengthen with explicit references.</div>'
+                  : '');
+            return '<div class="flex items-start gap-3 py-2 border-b border-white/5 last:border-none">' +
+                     '<span class="h-1.5 w-1.5 rounded-full mt-2 flex-shrink-0" style="background:' + color + '"></span>' +
+                     '<div class="min-w-0 flex-1">' +
+                       '<div class="flex flex-wrap items-baseline gap-2">' +
+                         '<span class="font-mono text-[11px] text-white/55">' + UI.htmlEscape(fc.code) + '</span>' +
+                         '<span class="font-semibold text-[12.5px]">' + UI.htmlEscape(fc.title) + '</span>' +
+                         '<span class="chip text-[10px]" style="border-color:' + color + ';color:' + color + '">' + label + '</span>' +
+                         '<span class="text-[10px] uppercase tracking-widest text-white/35 ml-auto">' + UI.htmlEscape(fc.severity) + '</span>' +
+                       '</div>' +
+                       ev + snippet + rec +
+                     '</div>' +
+                   '</div>';
+          }).join('');
+          return '<div class="gr-card p-4 mb-3">' +
+                   '<div class="flex items-center gap-3 mb-2">' +
+                     '<div class="font-bold text-sm">' + UI.htmlEscape(fw.name) + '</div>' +
+                     '<span class="chip">' + fw.compliant + '/' + fw.total + ' compliant</span>' +
+                     (fw.partial ? '<span class="chip" style="color:#fcd34d;border-color:rgba(251,191,36,0.4)">' + fw.partial + ' partial</span>' : '') +
+                     (fw.missing ? '<span class="chip" style="color:#fda4af;border-color:rgba(251,113,133,0.4)">' + fw.missing + ' missing</span>' : '') +
+                     '<span class="ml-auto text-[11px] text-white/55">' + fw.coveragePct + '%</span>' +
+                   '</div>' +
+                   '<div>' + rows + '</div>' +
+                 '</div>';
+        }).join('');
+
+    var html = [
+      '<div class="flex items-start justify-between mb-5">',
+        '<div class="min-w-0">',
+          '<div class="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">Compliance coverage</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">' + UI.htmlEscape(p.title) + '</h3>',
+          '<p class="text-xs text-white/55 mt-1">' + s.compliantControls + ' compliant \u00b7 ' + s.partialControls + ' partial \u00b7 ' + s.missingControls + ' missing across ' + s.totalControls + ' framework controls. Overall coverage: ' + s.coveragePct + '%.</p>',
+        '</div>',
+        '<button onclick="UI.closeModal()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>',
+      '<div class="max-h-[60vh] overflow-y-auto pr-1">' + fwBlocks + '</div>',
+      '<div class="mt-5 pt-4 border-t border-white/5 flex items-center gap-2">',
+        s.missingControls + s.partialControls > 0
+          ? '<button class="btn btn-primary text-xs" onclick="UI.closeModal(); Views.setGapsFilter(\'policyId\', \'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open in Compliance Gaps</button>'
+          : '<div class="text-xs text-emerald-300 font-semibold flex items-center gap-2"><i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> All framework controls compliant.</div>',
+        '<button class="btn btn-ghost text-xs ml-auto" onclick="UI.closeModal()">Close</button>',
+      '</div>'
+    ].join('');
+    UI.openModal(html);
+  }
+
   function openPolicyViewer(policyId, opts) {
     opts = opts || {};
     _revokeViewerBlobs();
@@ -2194,18 +2794,108 @@ DriftScore = (<br/>
 
     /* ---- Body content depends on the policy's format + whether it has a file. */
     var body = '';
-    var isPdf = (p.format === 'pdf') && p.source === 'uploaded' && p.hasFile;
-    var isText = ['markdown', 'html', 'text'].indexOf(p.format) >= 0 && p.source === 'uploaded' && p.hasFile;
-    if (isPdf) {
+    var isLocalPdf  = (p.format === 'pdf') && p.source === 'uploaded' && p.hasFile;
+    var isLocalText = ['markdown', 'html', 'text'].indexOf(p.format) >= 0 && p.source === 'uploaded' && p.hasFile;
+    var isServerPdf  = (p.format === 'pdf') && p.source === 'server' && !!p.fileUrl;
+    var isServerText = ['markdown', 'html', 'text'].indexOf(p.format) >= 0 && p.source === 'server' && !!p.fileUrl;
+    var isPdf  = isLocalPdf  || isServerPdf;
+    var isText = isLocalText || isServerText;
+    if (isServerPdf) {
+      /* Server-hosted PDFs render from the Blob CDN URL directly: no base64
+         in localStorage, no magic-byte sniff needed (the server validated MIME
+         on upload). */
+      var safeUrl = UI.safeUrl(p.fileUrl);
+      var safeUrlForFrame = (safeUrl !== '#') ? p.fileUrl : null;
+      var serverFallbackCta =
+        '<div class="flex flex-wrap items-center gap-2 mb-2 text-[11px] text-white/55">' +
+          '<i data-lucide="info" class="w-3.5 h-3.5"></i>' +
+          'PDF preview is rendered by your browser. If it does not load below,' +
+          ' <button class="text-babcom-200 hover:text-babcom-100 underline" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')">open it in a new tab</button>.' +
+        '</div>';
+      if (safeUrlForFrame) {
+        body = serverFallbackCta +
+               '<div class="rounded-lg overflow-hidden border border-white/5" style="height:60vh">' +
+                 '<iframe src="' + UI.htmlEscape(safeUrlForFrame) + '" class="w-full h-full bg-white" title="' + UI.htmlEscape(p.title) + ' (PDF preview)"></iframe>' +
+               '</div>';
+      } else {
+        body = '<div class="rounded-lg border border-accent-rose/30 bg-accent-rose/5 p-5 text-center">' +
+                 '<div class="font-semibold text-sm">Stored URL is not a safe https link</div>' +
+               '</div>';
+      }
+    } else if (isServerText) {
+      /* Markdown / HTML / TXT hosted on the CDN : fetch the body once and
+         render it through the same safe pipeline we use for local uploads. */
+      body = '<div id="srv-policy-body" class="rounded-lg border border-white/5 p-5 bg-black/30 max-h-[60vh] overflow-y-auto text-sm leading-relaxed">' +
+               '<div class="text-white/45 text-[12px]"><i data-lucide="loader-2" class="w-3.5 h-3.5 inline-block animate-spin"></i> Loading policy body...</div>' +
+             '</div>';
+      /* Kick off the fetch after we've rendered the modal shell. The fetch
+         target is the same-origin policy's fileUrl on blob.vercel-storage; we
+         interpret nothing as HTML to keep XSS off the table. */
+      setTimeout(function () {
+        fetch(p.fileUrl, { cache: 'no-store' }).then(function (r) {
+          return r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status));
+        }).then(function (txt) {
+          var el = document.getElementById('srv-policy-body');
+          if (!el) return;
+          if (p.format === 'markdown') {
+            el.innerHTML = _renderMarkdown(txt);
+          } else {
+            /* HTML and TXT both rendered as escaped text. */
+            el.innerHTML = '<pre class="whitespace-pre-wrap text-[12px] leading-relaxed text-white/80">' + UI.htmlEscape(txt) + '</pre>';
+          }
+          if (window.lucide) lucide.createIcons();
+        }).catch(function () {
+          var el = document.getElementById('srv-policy-body');
+          if (el) el.innerHTML = '<div class="text-accent-rose text-[12px]">Could not load policy body from the server.</div>';
+        });
+      }, 0);
+    } else if (isLocalPdf) {
       var f = DATA.getPolicyFile(p.id);
       if (f && f.base64) {
         var blob = _b64ToBlob(f.base64, f.mimeType);
         var url  = _newBlobUrl(blob);
-        body = '<div class="rounded-lg overflow-hidden border border-white/5" style="height:60vh">' +
-                 '<iframe src="' + url + '" class="w-full h-full bg-white" sandbox="allow-same-origin"></iframe>' +
+        /* Quick magic-byte sniff so we can warn the user when an upload was
+           renamed to .pdf but isn't actually one (the browser's PDF viewer
+           would otherwise just render an empty grey "broken file" panel). */
+        var looksLikePdf = false;
+        try {
+          var head = atob((f.base64 || '').slice(0, 8)).slice(0, 5);
+          looksLikePdf = head === '%PDF-';
+        } catch (_) { looksLikePdf = false; }
+
+        var fallbackCta =
+          '<div class="flex flex-wrap items-center gap-2 mb-2 text-[11px] text-white/55">' +
+            '<i data-lucide="info" class="w-3.5 h-3.5"></i>' +
+            'PDF preview is rendered by your browser. If it does not load below,' +
+            ' <button class="text-babcom-200 hover:text-babcom-100 underline" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')">open it in a new tab</button>.' +
+          '</div>';
+
+        if (!looksLikePdf) {
+          body = fallbackCta +
+                 '<div class="rounded-lg border border-accent-rose/30 bg-accent-rose/5 p-5 text-center">' +
+                   '<i data-lucide="file-warning" class="w-7 h-7 mx-auto text-accent-rose mb-2"></i>' +
+                   '<div class="font-semibold text-sm">This file does not look like a valid PDF</div>' +
+                   '<div class="text-[12px] text-white/55 mt-1">The uploaded file is missing the standard <code class="text-white/80">%PDF-</code> header. Try re-exporting from your source and uploading again.</div>' +
+                   '<button class="btn btn-ghost text-xs mt-3 inline-flex" onclick="Views.openPolicyDocument(\'' + UI.htmlEscape(p.id) + '\')"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Try opening it anyway</button>' +
+                 '</div>';
+        } else {
+          /* `sandbox` is intentionally absent: the blob URL is from our own
+             origin and the browser's built-in PDF viewer needs scripts to
+             render the toolbar / pagination. CSP still keeps us from being
+             framed and from loading any other plugin. */
+          body = fallbackCta +
+                 '<div class="rounded-lg overflow-hidden border border-white/5" style="height:60vh">' +
+                   '<iframe src="' + url + '" class="w-full h-full bg-white" title="' + UI.htmlEscape(p.title) + ' (PDF preview)"></iframe>' +
+                 '</div>';
+        }
+      } else {
+        body = '<div class="rounded-lg border border-white/5 p-8 text-center bg-black/30">' +
+                 '<i data-lucide="file-x" class="w-8 h-8 mx-auto text-white/30 mb-3"></i>' +
+                 '<div class="font-semibold text-sm">The PDF payload is missing</div>' +
+                 '<div class="text-[12px] text-white/45 mt-1">Your browser may have evicted it from local storage. Re-upload the file to view it.</div>' +
                '</div>';
       }
-    } else if (isText) {
+    } else if (isLocalText) {
       var f2 = DATA.getPolicyFile(p.id);
       var txt = f2 ? _b64ToText(f2.base64) : '';
       if (p.format === 'markdown') {
@@ -2325,11 +3015,16 @@ DriftScore = (<br/>
     setPolicyFilter:       setPolicyFilter,
     openUploadPolicyModal: openUploadPolicyModal,
     handlePolicyFile:      handlePolicyFile,
+    runPolicyVerification: runPolicyVerification,
     savePolicyUpload:      savePolicyUpload,
     openPolicyPickerModal: openPolicyPickerModal,
     selectPolicyForControl:selectPolicyForControl,
     openPolicyDocument:    openPolicyDocument,
     openPolicyViewer:      openPolicyViewer,
-    deletePolicy:          deletePolicy
+    openPolicyComplianceModal: openPolicyComplianceModal,
+    deletePolicy:          deletePolicy,
+    /* ---------- Compliance Gaps filters ---------- */
+    setGapsFilter:         setGapsFilter,
+    clearGapsFilter:       clearGapsFilter
   };
 })();

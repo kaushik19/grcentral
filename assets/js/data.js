@@ -591,10 +591,62 @@ window.DATA = (() => {
 
   let userPolicies     = _loadJSON(K_USER_POLICIES, []);
   let controlPolicyMap = _loadJSON(K_CTRL_MAP, {});
+  /* Policies that live on the server (Vercel Blob). Populated by
+     refreshServerPolicies(); empty in local/offline mode. */
+  let serverPolicies   = [];
 
   function getAllPolicies() {
-    /* Seeded first (immutable), then user uploads (newest first). */
-    return seededPolicies.concat(userPolicies.slice().reverse());
+    /* Seeded first (immutable), then server uploads (newest first),
+       then this-browser-only local uploads (newest first). */
+    const seen = new Set();
+    const out = [];
+    seededPolicies.forEach(function (p) { if (!seen.has(p.id)) { seen.add(p.id); out.push(p); } });
+    serverPolicies.slice().forEach(function (p) { if (p && !seen.has(p.id)) { seen.add(p.id); out.push(p); } });
+    userPolicies.slice().reverse().forEach(function (p) { if (p && !seen.has(p.id)) { seen.add(p.id); out.push(p); } });
+    return out;
+  }
+
+  function getServerPolicies()  { return serverPolicies.slice(); }
+  function _hydrateServerPolicies(arr) {
+    serverPolicies = Array.isArray(arr) ? arr.slice() : [];
+  }
+  /* Async loader: pulls the catalogue from /api/policies and stores it in
+     the in-memory cache. Safe to call repeatedly. Returns the array on
+     success or `null` if cloud mode is not available.
+
+     After hydrating, we deterministically re-derive compliance gaps for
+     every server policy that the current session has not derived yet.
+     This is what makes the Compliance Gaps + Evidence Vault pages look
+     the same for every visitor without us needing to persist the derived
+     rows on Blob -- the inputs (policy + frameworkControls) are identical
+     everywhere, so the outputs are too. */
+  function refreshServerPolicies() {
+    if (typeof window === 'undefined' || !window.CloudPolicies) return Promise.resolve(null);
+    return window.CloudPolicies.ping().then(function (ok) {
+      if (!ok) { _hydrateServerPolicies([]); return null; }
+      return window.CloudPolicies.list().then(function (list) {
+        _hydrateServerPolicies(list);
+        (list || []).forEach(function (p) {
+          if (!p || !p.id) return;
+          const alreadyDerived = risks.some(function (r) { return r.sourcePolicyId === p.id; });
+          if (alreadyDerived) return;
+          try {
+            const scan = scanPolicyCompliance(p);
+            applyComplianceGaps(p.id, scan);
+          } catch (_) { /* skip on individual failure */ }
+        });
+        return serverPolicies.slice();
+      });
+    });
+  }
+  /* Add to the in-memory cache without making a round-trip. Used after a
+     successful upload so the new policy shows up immediately. */
+  function _ingestServerPolicy(p) {
+    if (!p || !p.id) return;
+    serverPolicies = [p].concat(serverPolicies.filter(function (x) { return x && x.id !== p.id; }));
+  }
+  function _evictServerPolicy(id) {
+    serverPolicies = serverPolicies.filter(function (x) { return x && x.id !== id; });
   }
   function getPolicyById(id) {
     return getAllPolicies().find(p => p.id === id) || null;
@@ -660,7 +712,62 @@ window.DATA = (() => {
     return userPolicies.length < before;
   }
   function getPolicyFile(id) {
+    /* Local-storage path (this browser's uploads). For server-hosted policies
+       the binary lives on the Vercel Blob CDN and is loaded via policy.fileUrl,
+       not through this function. */
     return _loadJSON(K_FILE_PREFIX + id, null);
+  }
+
+  /* ====================================================================== */
+  /*  Cloud upload + delete (Vercel Blob via /api/policies)                 */
+  /*  --------------------------------------------------------------------- */
+  /*  These are async wrappers around the CloudPolicies fetch helper. They  */
+  /*  return a result shape that mirrors addUserPolicy({ ok, policy/error}) */
+  /*  so the calling view code can treat both paths uniformly.              */
+  /* ====================================================================== */
+  function addServerPolicy(meta, fileBase64, mimeType) {
+    if (typeof window === 'undefined' || !window.CloudPolicies) {
+      return Promise.resolve({ ok: false, error: 'Cloud client not loaded' });
+    }
+    return window.CloudPolicies.upload(meta, fileBase64, mimeType).then(function (res) {
+      if (res.ok && res.policy) {
+        _ingestServerPolicy(res.policy);
+        return { ok: true, policy: res.policy };
+      }
+      return { ok: false, error: res.error || 'Upload failed' };
+    });
+  }
+  function deleteServerPolicy(id) {
+    if (typeof window === 'undefined' || !window.CloudPolicies) {
+      return Promise.resolve(false);
+    }
+    return window.CloudPolicies.remove(id).then(function (res) {
+      if (res.ok) {
+        _evictServerPolicy(id);
+        /* Also drop any controlPolicyMap rows pointing at this server policy. */
+        let changed = false;
+        Object.keys(controlPolicyMap).forEach(function (k) {
+          if (controlPolicyMap[k] === id) { delete controlPolicyMap[k]; changed = true; }
+        });
+        if (changed) _saveJSON(K_CTRL_MAP, controlPolicyMap);
+        /* Evict the derived risks + evidence we materialised on hydration so
+           the Compliance Gaps page doesn't show ghost rows after a delete. */
+        for (let i = risks.length - 1; i >= 0; i--) {
+          if (risks[i].sourcePolicyId === id) {
+            delete indexes.risks[risks[i].id];
+            risks.splice(i, 1);
+          }
+        }
+        for (let j = evidence.length - 1; j >= 0; j--) {
+          if (evidence[j].policyId === id) {
+            delete indexes.evidence[evidence[j].id];
+            evidence.splice(j, 1);
+          }
+        }
+        return true;
+      }
+      return false;
+    });
   }
   function linkControlToPolicy(controlId, policyId) {
     if (!controlId) return false;
@@ -705,6 +812,576 @@ window.DATA = (() => {
     driftHistoryByReg[reg.id] = series;
   });
 
+  /* ====================================================================== */
+  /*  Framework Controls                                                    */
+  /*  ---------------------------------------------------------------------- */
+  /*  In the PO's language a *framework* = a regulation (GDPR, AI Act,      */
+  /*  DORA, ...) and a *control* = a specific clause / article / annex of   */
+  /*  that framework that an internal policy must address.                  */
+  /*                                                                        */
+  /*  Each control carries a small set of `keywords` that the compliance    */
+  /*  scanner uses to decide whether a policy actually covers it. Severity  */
+  /*  drives how badly a *missing* control hurts the drift score.           */
+  /* ====================================================================== */
+  const frameworkControls = {
+    'reg-gdpr': [
+      { id: 'gdpr-fc-art5',  code: 'Art. 5',  title: 'Principles relating to processing',          severity: 'high',     summary: 'Lawful basis, purpose limitation, data minimisation, accuracy, storage limitation and integrity.', keywords: ['lawful basis', 'purpose limitation', 'data minimisation', 'minimisation', 'storage limitation', 'principles'] },
+      { id: 'gdpr-fc-art6',  code: 'Art. 6',  title: 'Lawfulness of processing',                   severity: 'high',     summary: 'A processing activity must rest on one of six lawful bases.', keywords: ['lawful basis', 'consent', 'legitimate interest', 'article 6', 'art. 6'] },
+      { id: 'gdpr-fc-art25', code: 'Art. 25', title: 'Data protection by design and by default',   severity: 'high',     summary: 'Technical and organisational measures built into processing from the outset.', keywords: ['by design', 'by default', 'pseudonymisation', 'data protection by design'] },
+      { id: 'gdpr-fc-art30', code: 'Art. 30', title: 'Records of processing activities',           severity: 'medium',   summary: 'A documented inventory of every processing activity and its purposes.', keywords: ['records of processing', 'ropa', 'inventory', 'processing activities'] },
+      { id: 'gdpr-fc-art32', code: 'Art. 32', title: 'Security of processing',                     severity: 'critical', summary: 'Appropriate technical and organisational measures, encryption at rest and in transit for high-risk processing.', keywords: ['encryption', 'art. 32', 'article 32', 'security of processing', 'integrity', 'availability'] },
+      { id: 'gdpr-fc-art33', code: 'Art. 33', title: 'Personal-data breach notification',          severity: 'high',     summary: 'Breach notification to the supervisory authority within 72 hours.', keywords: ['breach notification', '72 hours', 'personal data breach'] },
+      { id: 'gdpr-fc-art35', code: 'Art. 35', title: 'Data protection impact assessment',          severity: 'medium',   summary: 'DPIA for high-risk processing operations.', keywords: ['dpia', 'data protection impact assessment'] },
+      { id: 'gdpr-fc-art44', code: 'Art. 44', title: 'Transfers to third countries',               severity: 'medium',   summary: 'Adequacy, SCCs or BCRs for international transfers.', keywords: ['international transfer', 'scc', 'standard contractual clauses', 'cross-border', 'third country'] }
+    ],
+    'reg-ai-act': [
+      { id: 'aia-fc-art5',   code: 'Art. 5',   title: 'Prohibited AI practices',                   severity: 'critical', summary: 'Bans on manipulative, social-scoring, biometric-categorisation and untargeted-scraping systems.', keywords: ['prohibited', 'manipulation', 'social scoring', 'subliminal'] },
+      { id: 'aia-fc-art6',   code: 'Art. 6',   title: 'Classification rules for high-risk systems', severity: 'high',    summary: 'When an AI system counts as "high-risk" and triggers Annex III obligations.', keywords: ['high-risk', 'high risk', 'article 6', 'annex iii', 'classification'] },
+      { id: 'aia-fc-art9',   code: 'Art. 9',   title: 'Risk-management system',                    severity: 'high',     summary: 'Continuous risk-management process across the AI system lifecycle.', keywords: ['risk management', 'risk management system', 'rms', 'lifecycle'] },
+      { id: 'aia-fc-art10',  code: 'Art. 10',  title: 'Data and data governance',                  severity: 'high',     summary: 'Training, validation and testing data quality, bias mitigation and provenance.', keywords: ['data governance', 'training data', 'bias', 'provenance', 'representative'] },
+      { id: 'aia-fc-art13',  code: 'Art. 13',  title: 'Transparency to deployers',                 severity: 'medium',   summary: 'Instructions for use, intended purpose, accuracy and robustness disclosed to deployers.', keywords: ['transparency', 'instructions for use', 'deployer', 'intended purpose'] },
+      { id: 'aia-fc-art14',  code: 'Art. 14',  title: 'Human oversight',                           severity: 'high',     summary: 'Effective human-oversight measures over high-risk AI systems.', keywords: ['human oversight', 'human-in-the-loop', 'oversight'] },
+      { id: 'aia-fc-art50',  code: 'Art. 50',  title: 'Transparency for certain AI systems',       severity: 'medium',   summary: 'Disclosure obligations for chatbots, deepfakes and emotion-recognition systems.', keywords: ['chatbot', 'deepfake', 'synthetic content', 'emotion recognition'] },
+      { id: 'aia-fc-art53',  code: 'Art. 53',  title: 'GPAI provider obligations',                 severity: 'high',     summary: 'Documentation, copyright policy and serious-incident reporting for general-purpose models.', keywords: ['gpai', 'general-purpose', 'general purpose ai', 'foundation model', 'copyright'] }
+    ],
+    'reg-nis2': [
+      { id: 'nis2-fc-art20', code: 'Art. 20', title: 'Governance of cybersecurity risk',           severity: 'high',     summary: 'Management bodies approve and oversee cybersecurity risk-management measures.', keywords: ['governance', 'board oversight', 'management body', 'accountability'] },
+      { id: 'nis2-fc-art21', code: 'Art. 21', title: 'Cybersecurity risk-management measures',     severity: 'critical', summary: 'Risk analyses, incident handling, BCM, supply-chain security, vulnerability handling, cryptography.', keywords: ['risk analysis', 'business continuity', 'supply chain', 'cryptography', 'vulnerability handling', 'sbom'] },
+      { id: 'nis2-fc-art23', code: 'Art. 23', title: 'Incident reporting (24h/72h/1m)',            severity: 'critical', summary: 'Early warning within 24 h, full notification within 72 h, final report within 1 month.', keywords: ['24 hours', '72 hours', 'incident reporting', 'early warning'] },
+      { id: 'nis2-fc-art32', code: 'Art. 32', title: 'Supervisory measures',                       severity: 'medium',   summary: 'Audit, inspection and information-request obligations toward competent authorities.', keywords: ['audit', 'inspection', 'competent authority', 'supervisory'] }
+    ],
+    'reg-dora': [
+      { id: 'dora-fc-art5',  code: 'Art. 5',  title: 'ICT risk-management framework',              severity: 'high',     summary: 'Documented ICT risk-management framework approved by the management body.', keywords: ['ict risk', 'risk management framework', 'ict governance'] },
+      { id: 'dora-fc-art17', code: 'Art. 17', title: 'ICT-related incident management',            severity: 'high',     summary: 'Detection, classification, response and reporting of ICT-related incidents.', keywords: ['ict incident', 'incident management', 'incident classification'] },
+      { id: 'dora-fc-art24', code: 'Art. 24', title: 'Digital operational resilience testing',     severity: 'high',     summary: 'Threat-led penetration testing and resilience scenarios.', keywords: ['penetration test', 'tlpt', 'resilience testing', 'threat-led'] },
+      { id: 'dora-fc-art28', code: 'Art. 28', title: 'ICT third-party risk management',            severity: 'critical', summary: 'Lifecycle management of contracts with ICT third-party providers, concentration risk.', keywords: ['third-party', 'third party', 'subcontract', 'concentration risk', 'ict provider'] },
+      { id: 'dora-fc-art30', code: 'Art. 30', title: 'Contractual provisions',                     severity: 'medium',   summary: 'Mandatory clauses in ICT-services contracts (audit rights, exit strategies, locations).', keywords: ['exit strategy', 'audit rights', 'service location'] }
+    ],
+    'reg-dsa': [
+      { id: 'dsa-fc-art14',  code: 'Art. 14',  title: 'Terms and conditions',                      severity: 'medium',   summary: 'Clear, machine-readable terms covering content moderation and algorithmic rules.', keywords: ['terms and conditions', 'community guidelines', 'machine-readable'] },
+      { id: 'dsa-fc-art16',  code: 'Art. 16',  title: 'Notice-and-action mechanism',               severity: 'high',     summary: 'Easy-to-use channel for any user to flag illegal content.', keywords: ['notice and action', 'illegal content', 'flagging', 'report content'] },
+      { id: 'dsa-fc-art22',  code: 'Art. 22',  title: 'Trusted flaggers',                          severity: 'medium',   summary: 'Priority handling for entities designated as trusted flaggers by Digital Services Coordinators.', keywords: ['trusted flagger', 'priority handling'] },
+      { id: 'dsa-fc-art24',  code: 'Art. 24',  title: 'Transparency reporting',                    severity: 'medium',   summary: 'Annual transparency report on content moderation activities.', keywords: ['transparency report', 'transparency reporting', 'annual report'] }
+    ],
+    'reg-eidas2': [
+      { id: 'eidas2-fc-wallet', code: 'Art. 6a', title: 'European Digital Identity Wallet',         severity: 'high',     summary: 'Issuance, use and revocation of the EUDI Wallet.', keywords: ['eudi wallet', 'digital identity wallet', 'wallet'] },
+      { id: 'eidas2-fc-qts',    code: 'Art. 24', title: 'Qualified trust services',                 severity: 'high',     summary: 'Requirements applicable to qualified trust service providers.', keywords: ['qualified trust', 'qtsp', 'trust service'] },
+      { id: 'eidas2-fc-eid',    code: 'Art. 9',  title: 'Electronic identification schemes',        severity: 'medium',   summary: 'Notified eID schemes and assurance levels.', keywords: ['electronic identification', 'eid scheme', 'assurance level'] }
+    ],
+    'reg-data-act': [
+      { id: 'da-fc-share',  code: 'Art. 4',  title: 'User access to IoT data',                     severity: 'high',     summary: 'Users of connected products have the right to access the data they generate.', keywords: ['data sharing', 'user access', 'iot data', 'connected product'] },
+      { id: 'da-fc-portab', code: 'Art. 23', title: 'Switching between data-processing services',  severity: 'high',     summary: 'Cloud switching and interoperability obligations.', keywords: ['switching', 'cloud switching', 'interoperability', 'portability'] },
+      { id: 'da-fc-gov',    code: 'Art. 14', title: 'Business-to-government data sharing',         severity: 'medium',   summary: 'Exceptional-need access for public-sector bodies.', keywords: ['b2g', 'public body', 'exceptional need'] }
+    ],
+    'reg-edpb-opn-4-2026': [
+      { id: 'edpb4-fc-li',   code: '§3',  title: 'Legitimate-interest test',                       severity: 'high',     summary: 'Three-step legitimate-interest assessment (purpose, necessity, balancing).', keywords: ['legitimate interest', 'lia', 'balancing test'] },
+      { id: 'edpb4-fc-doc',  code: '§5',  title: 'Documentation of the LIA',                       severity: 'medium',   summary: 'Maintain a written, reviewable legitimate-interest assessment.', keywords: ['documentation', 'lia documentation'] },
+      { id: 'edpb4-fc-info', code: '§7',  title: 'Information to data subjects',                   severity: 'medium',   summary: 'Inform the data subject of the legitimate interest pursued.', keywords: ['transparency', 'inform data subject', 'privacy notice'] }
+    ],
+    'reg-cra': [
+      { id: 'cra-fc-sbom',   code: 'Art. 13', title: 'SBOM disclosure',                            severity: 'critical', summary: 'Maintain and disclose a Software Bill of Materials per CycloneDX/SPDX.', keywords: ['sbom', 'cyclonedx', 'spdx', 'software bill of materials'] },
+      { id: 'cra-fc-vdp',    code: 'Art. 11', title: 'Coordinated vulnerability disclosure',       severity: 'high',     summary: 'A documented process for receiving and acting on vulnerability reports.', keywords: ['vulnerability disclosure', 'vdp', 'coordinated disclosure'] },
+      { id: 'cra-fc-secdev', code: 'Annex I', title: 'Essential cybersecurity requirements',       severity: 'high',     summary: 'Secure-by-design, secure-by-default, no known exploitable vulnerabilities at shipping.', keywords: ['secure by design', 'secure-by-default', 'known exploitable'] }
+    ],
+    'reg-nist-csf': [
+      { id: 'nist-fc-id',  code: 'ID', title: 'Identify',                                          severity: 'medium',   summary: 'Asset management, business environment, governance, risk assessment.', keywords: ['identify', 'asset management', 'business environment'] },
+      { id: 'nist-fc-pr',  code: 'PR', title: 'Protect',                                           severity: 'high',     summary: 'Access control, data security, training, maintenance, protective technology.', keywords: ['protect', 'access control', 'data security', 'awareness training'] },
+      { id: 'nist-fc-de',  code: 'DE', title: 'Detect',                                            severity: 'high',     summary: 'Anomalies, continuous monitoring and detection processes.', keywords: ['detect', 'monitoring', 'anomaly detection', 'continuous monitoring'] },
+      { id: 'nist-fc-rs',  code: 'RS', title: 'Respond',                                           severity: 'high',     summary: 'Response planning, communications, analysis, mitigation, improvements.', keywords: ['respond', 'response plan', 'incident response'] },
+      { id: 'nist-fc-rc',  code: 'RC', title: 'Recover',                                           severity: 'medium',   summary: 'Recovery planning, improvements, communications.', keywords: ['recover', 'recovery plan', 'business continuity', 'bcm'] },
+      { id: 'nist-fc-gv',  code: 'GV', title: 'Govern (CSF 2.0)',                                  severity: 'high',     summary: 'Organisational context, risk-management strategy, roles, policies, oversight.', keywords: ['govern', 'governance', 'csf 2.0', 'risk strategy'] }
+    ],
+    'reg-certin-2024': [
+      { id: 'certin-fc-6h',   code: '§4', title: 'Six-hour incident reporting',                    severity: 'critical', summary: 'Cyber incidents must be reported to CERT-In within six hours of noticing.', keywords: ['6 hours', 'six hours', 'cert-in', 'incident reporting', 'sahyog'] },
+      { id: 'certin-fc-logs', code: '§5', title: 'Log retention (180 days, India)',                severity: 'high',     summary: 'ICT systems must retain logs for 180 days within Indian jurisdiction.', keywords: ['log retention', '180 days', 'india'] },
+      { id: 'certin-fc-kyc',  code: '§7', title: 'KYC by VPN and data-centre providers',           severity: 'medium',   summary: 'VPN, VPS and data-centre providers must collect and retain KYC.', keywords: ['kyc', 'vpn provider', 'vps', 'data centre'] }
+    ]
+  };
+
+  /* ====================================================================== */
+  /*  Policy analyzer                                                       */
+  /*  ---------------------------------------------------------------------- */
+  /*  Heuristic checks over (a) the metadata the user filled in and         */
+  /*  (b) the textual body of the uploaded file when available.             */
+  /*  Returns a structured `findings[]` array, a severity summary, and a    */
+  /*  projected drift delta keyed by regulation id so the upload modal can  */
+  /*  preview the risk impact before the user clicks Save.                  */
+  /* ====================================================================== */
+
+  const REG_KEYWORDS = {
+    'reg-gdpr':         ['article 32', 'encryption', 'data subject', 'retention', 'breach notification'],
+    'reg-ai-act':       ['high-risk', 'conformity', 'annex iii', 'fundamental rights'],
+    'reg-nis2':         ['incident', '24 hours', 'reporting obligation'],
+    'reg-dora':         ['third-party', 'ict provider', 'concentration risk'],
+    'reg-cra':          ['sbom', 'vulnerability disclosure', 'cyclonedx'],
+    'reg-dsa':          ['transparency report', 'illegal content', 'trusted flagger'],
+    'reg-eidas2':       ['wallet', 'qualified trust', 'electronic identification'],
+    'reg-data-act':     ['data sharing', 'interoperability', 'switching'],
+    'reg-nist-csf':     ['identify', 'protect', 'detect', 'respond', 'recover'],
+    'reg-certin-2024':  ['6 hours', 'cert-in', 'incident reporting'],
+    'reg-edpb-opn-4-2026': ['legitimate interest', 'lia']
+  };
+
+  function _decodeBase64Text(b64, mimeType) {
+    if (!b64) return '';
+    if (mimeType && /pdf/.test(mimeType)) return '';   // we can't text-extract PDF in-browser cheaply
+    try {
+      if (typeof atob === 'function') {
+        const bin = atob(b64);
+        if (typeof TextDecoder !== 'undefined') {
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          return new TextDecoder('utf-8').decode(bytes);
+        }
+        return bin;
+      }
+      if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8');
+    } catch (_) { /* ignore */ }
+    return '';
+  }
+
+  function analyzePolicy(meta, base64, mimeType) {
+    meta = meta || {};
+    const findings = [];
+    const today = new Date();
+    let fidSeed = 0;
+    const fid = () => 'finding-' + (Date.now().toString(36)) + '-' + (++fidSeed);
+
+    const push = (f) => {
+      findings.push(Object.assign({
+        id: fid(),
+        category: 'governance',
+        severity: 'low',
+        regImpact: {}
+      }, f));
+    };
+
+    /* ---------- metadata-only checks ---------- */
+    if (!meta.description || String(meta.description).trim().length < 25) {
+      push({
+        category: 'metadata',
+        severity: 'low',
+        title: 'Policy lacks a meaningful description',
+        detail: 'A short summary helps reviewers grasp scope at a glance.',
+        recommendation: 'Add one or two sentences describing what this policy governs.'
+      });
+    }
+    if (!meta.ownerId) {
+      push({ category: 'governance', severity: 'medium',
+        title: 'No policy owner assigned',
+        detail: 'Without an owner, change requests will not have a clear recipient.',
+        recommendation: 'Assign an owner accountable for keeping the policy current.' });
+    }
+    if (!meta.approverId) {
+      push({ category: 'governance', severity: 'medium',
+        title: 'No approver recorded',
+        detail: 'Approver is required for evidencing sign-off during audits.',
+        recommendation: 'Record the executive sponsor who approved this policy.' });
+    }
+    if (meta.status === 'draft') {
+      push({ category: 'governance', severity: 'low',
+        title: 'Policy is still in draft',
+        detail: 'Draft policies do not satisfy control objectives for audit evidence.',
+        recommendation: 'Move to "Published" once formally approved.' });
+    }
+    if (meta.nextReviewDate) {
+      const nr = new Date(meta.nextReviewDate);
+      if (!isNaN(nr.getTime())) {
+        if (nr < today) {
+          push({ category: 'governance', severity: 'high',
+            title: 'Policy review is already overdue',
+            detail: 'The "next review" date is in the past, so the policy is stale on day one.',
+            recommendation: 'Schedule a review within the next 30 days.' });
+        } else if ((nr - today) / 86400000 < 30) {
+          push({ category: 'governance', severity: 'medium',
+            title: 'Policy review is due within 30 days',
+            detail: 'Reviews this close to expiry typically slip past their deadline.',
+            recommendation: 'Either complete the review now or extend the cycle.' });
+        }
+      }
+    }
+    if (!Array.isArray(meta.mapsToRegulations) || meta.mapsToRegulations.length === 0) {
+      push({ category: 'coverage', severity: 'high',
+        title: 'Policy is not mapped to any regulation',
+        detail: 'An unmapped policy will not be picked up by any compliance evidence chain.',
+        recommendation: 'Map the policy to at least one regulation it satisfies.' });
+    }
+    if (!Array.isArray(meta.implementedByControls) || meta.implementedByControls.length === 0) {
+      push({ category: 'coverage', severity: 'medium',
+        title: 'No technical controls are linked to this policy',
+        detail: 'Without linked controls, drift in this policy area cannot be measured.',
+        recommendation: 'Link the controls that operationalise this policy.' });
+    }
+
+    /* ---------- duplicate-title check (against currently known policies) ---- */
+    if (meta.title) {
+      const tl = String(meta.title).trim().toLowerCase();
+      const dupes = getAllPolicies().filter(p => p.title && p.title.toLowerCase() === tl);
+      if (dupes.length > 0) {
+        push({ category: 'governance', severity: 'medium',
+          title: 'Title overlaps with an existing policy',
+          detail: 'A policy named "' + dupes[0].title + '" already exists in the catalogue.',
+          recommendation: 'Use a distinguishing name or version (e.g. v2) to avoid confusion.' });
+      }
+    }
+
+    /* ---------- content-based checks (when we have readable text) ---------- */
+    const text = (base64 && mimeType && !/pdf/.test(mimeType))
+      ? _decodeBase64Text(base64, mimeType)
+      : '';
+    if (text) {
+      const stripped  = text.replace(/<[^>]+>/g, ' ');
+      const lower     = stripped.toLowerCase();
+      const wordCount = stripped.trim().split(/\s+/).filter(Boolean).length;
+      if (wordCount > 0 && wordCount < 150) {
+        push({ category: 'content', severity: 'medium',
+          title: 'Policy body is unusually short (under 150 words)',
+          detail: 'A ' + wordCount + '-word policy rarely covers obligations comprehensively.',
+          recommendation: 'Expand sections that describe scope, responsibilities and controls.' });
+      }
+      (meta.mapsToRegulations || []).forEach(function (regId) {
+        const expected = REG_KEYWORDS[regId] || [];
+        if (!expected.length) return;
+        const missing = expected.filter(function (kw) { return lower.indexOf(kw) === -1; });
+        if (missing.length >= 2) {
+          const reg  = indexes.regulations[regId];
+          const name = reg ? reg.shortTitle : regId;
+          push({ category: 'coverage', severity: 'high',
+            title: 'Policy may not cover key ' + name + ' obligations',
+            detail: 'No reference found for: ' + missing.slice(0, 3).join(', ') + '.',
+            recommendation: 'Add explicit sections that address ' + missing.slice(0, 3).join(', ') + '.',
+            regImpact: { [regId]: 8 } });
+        }
+      });
+    } else if (base64 && mimeType && /pdf/.test(mimeType)) {
+      push({ category: 'content', severity: 'low',
+        title: 'PDF body could not be text-extracted in-browser',
+        detail: 'Coverage analysis is limited to metadata for PDF uploads.',
+        recommendation: 'Upload a Markdown or HTML copy alongside for deeper analysis.' });
+    }
+
+    /* ---------- per-regulation projected drift delta ---------- */
+    const projectedDriftDelta = {};
+    const regs = (meta.mapsToRegulations || []);
+    findings.forEach(function (f) {
+      if (f.regImpact && Object.keys(f.regImpact).length > 0) {
+        Object.keys(f.regImpact).forEach(function (rid) {
+          projectedDriftDelta[rid] = (projectedDriftDelta[rid] || 0) + f.regImpact[rid];
+        });
+      } else if (regs.length > 0 && (f.severity === 'high' || f.severity === 'critical')) {
+        const per = f.severity === 'critical' ? 6 : 4;
+        regs.forEach(function (rid) {
+          projectedDriftDelta[rid] = (projectedDriftDelta[rid] || 0) + per;
+        });
+      }
+    });
+
+    const summary = {
+      total:    findings.length,
+      critical: findings.filter(function (f) { return f.severity === 'critical'; }).length,
+      high:     findings.filter(function (f) { return f.severity === 'high';     }).length,
+      medium:   findings.filter(function (f) { return f.severity === 'medium';   }).length,
+      low:      findings.filter(function (f) { return f.severity === 'low';      }).length
+    };
+    summary.opensRisks = summary.critical + summary.high;
+    summary.worstRegId =
+      Object.keys(projectedDriftDelta).sort(function (a, b) {
+        return projectedDriftDelta[b] - projectedDriftDelta[a];
+      })[0] || null;
+
+    return { findings: findings, summary: summary, projectedDriftDelta: projectedDriftDelta };
+  }
+
+  /* Apply analyzer findings: open risks against linked regulations and
+     nudge linked-control drift so the risk-engine immediately reflects
+     the new gap. Returns a summary of what changed so the UI can toast. */
+  function applyPolicyFindings(policyId, analysis) {
+    const policy = getPolicyById(policyId);
+    const out = { openedRisks: [], driftBumped: {}, perRegulationDelta: {} };
+    if (!policy || !analysis || !Array.isArray(analysis.findings)) return out;
+
+    const linkedRegs   = (policy.mapsToRegulations    || []).slice();
+    const linkedCtrls  = (policy.implementedByControls || []).slice();
+    const fallbackReg  = linkedRegs[0] || 'reg-gdpr';
+    const fallbackCtrl = linkedCtrls[0] || (controls[0] && controls[0].id) || null;
+
+    analysis.findings.forEach(function (f) {
+      if (f.severity !== 'high' && f.severity !== 'critical') return;
+      const targetRegs = f.regImpact && Object.keys(f.regImpact).length > 0
+        ? Object.keys(f.regImpact)
+        : (linkedRegs.length ? linkedRegs : [fallbackReg]);
+      targetRegs.forEach(function (regId) {
+        const risk = {
+          id:                'R-pol-' + Math.random().toString(36).slice(2, 8),
+          regId:             regId,
+          controlId:         fallbackCtrl,
+          title:             f.title + ' (uploaded policy: ' + policy.title + ')',
+          severity:          f.severity,
+          businessUnitId:    'bu-cloud',
+          ownerId:           policy.ownerId || (personas[0] && personas[0].id) || null,
+          openSince:         new Date().toISOString().slice(0, 10),
+          remediationDueDays: f.severity === 'critical' ? 7 : 21,
+          sourcePolicyId:    policy.id,
+          sourceFindingId:   f.id
+        };
+        risks.push(risk);
+        indexes.risks[risk.id] = risk;
+        out.openedRisks.push(risk);
+        out.perRegulationDelta[regId] = (out.perRegulationDelta[regId] || 0) + 1;
+      });
+    });
+
+    /* Nudge control drift on linked controls so coverage/control scores move. */
+    const bump = Math.min(20, (analysis.summary.high || 0) * 2 + (analysis.summary.critical || 0) * 4);
+    if (bump > 0) {
+      linkedCtrls.forEach(function (cid) {
+        const c = indexes.controls[cid];
+        if (!c) return;
+        c.drift = Math.min(60, (c.drift || 0) + bump);
+        out.driftBumped[cid] = bump;
+      });
+    }
+
+    return out;
+  }
+
+  /* ====================================================================== */
+  /*  Compliance scanner                                                    */
+  /*  ---------------------------------------------------------------------- */
+  /*  Walks every framework the policy claims to satisfy and, for each      */
+  /*  framework control, checks whether the policy's text actually covers   */
+  /*  it. Returns a structured `byFramework[]` array used by:               */
+  /*    - the upload-modal compliance-breakdown panel,                       */
+  /*    - the per-policy "View gaps" modal,                                  */
+  /*    - the Compliance Gaps table (Policy + Framework Control columns).   */
+  /* ====================================================================== */
+
+  function _buildScanCorpus(policy) {
+    /* The corpus is a list of { sectionId, sectionRef, text } entries.     */
+    const corpus = [];
+    if (policy.title)       corpus.push({ sectionRef: 'Title',       text: String(policy.title) });
+    if (policy.description) corpus.push({ sectionRef: 'Description', text: String(policy.description) });
+    if (Array.isArray(policy.sections)) {
+      policy.sections.forEach(function (s) {
+        corpus.push({
+          sectionId:  s.id,
+          sectionRef: '\u00a7' + (s.num || '') + ' ' + (s.title || ''),
+          text:       (s.title || '') + '. ' + (s.body || '')
+        });
+      });
+    }
+    if (Array.isArray(policy.tags) && policy.tags.length) {
+      corpus.push({ sectionRef: 'Tags', text: policy.tags.join(' ') });
+    }
+    /* For user-uploaded text-format policies, decode the body too.          */
+    if (policy.source === 'uploaded' && policy.hasFile && policy.format !== 'pdf') {
+      const f = getPolicyFile(policy.id);
+      if (f && f.base64) {
+        const body = _decodeBase64Text(f.base64, f.mimeType);
+        if (body) corpus.push({ sectionRef: 'Body', text: body });
+      }
+    }
+    return corpus;
+  }
+
+  function scanPolicyCompliance(policy) {
+    if (!policy) return { byFramework: [], summary: { totalControls: 0, compliantControls: 0, partialControls: 0, missingControls: 0, coveragePct: 0 }, evidenceItems: [] };
+
+    const corpus = _buildScanCorpus(policy);
+    const linkedRegs = Array.isArray(policy.mapsToRegulations) ? policy.mapsToRegulations : [];
+
+    const byFramework = [];
+    const evidenceItems = [];
+
+    linkedRegs.forEach(function (regId) {
+      const fcs = frameworkControls[regId];
+      const reg = indexes.regulations[regId];
+      if (!Array.isArray(fcs) || !fcs.length || !reg) return;
+
+      const fwEntry = {
+        regId:      regId,
+        name:       reg.shortTitle,
+        total:      fcs.length,
+        compliant:  0,
+        partial:    0,
+        missing:    0,
+        coveragePct: 0,
+        controls:   []
+      };
+
+      fcs.forEach(function (fc) {
+        const matchedKeywords    = [];
+        const evidenceSectionIds = [];
+        const evidenceRefs       = [];
+        const evidenceSnippets   = [];
+
+        fc.keywords.forEach(function (kw) {
+          const kwLower = kw.toLowerCase();
+          for (let i = 0; i < corpus.length; i++) {
+            const c = corpus[i];
+            if (!c.text) continue;
+            if (c.text.toLowerCase().indexOf(kwLower) >= 0) {
+              matchedKeywords.push(kw);
+              if (c.sectionId && evidenceSectionIds.indexOf(c.sectionId) === -1) {
+                evidenceSectionIds.push(c.sectionId);
+                evidenceRefs.push(c.sectionRef);
+                /* Pull a 140-char window around the first hit for the audit snippet. */
+                const idx = c.text.toLowerCase().indexOf(kwLower);
+                const from = Math.max(0, idx - 40);
+                const to   = Math.min(c.text.length, idx + kwLower.length + 80);
+                evidenceSnippets.push((from > 0 ? '\u2026' : '') + c.text.slice(from, to).replace(/\s+/g, ' ').trim() + (to < c.text.length ? '\u2026' : ''));
+              } else if (!c.sectionId && evidenceRefs.indexOf(c.sectionRef) === -1) {
+                evidenceRefs.push(c.sectionRef);
+              }
+              break;
+            }
+          }
+        });
+
+        let status;
+        if (matchedKeywords.length === 0)      status = 'missing';
+        else if (matchedKeywords.length === 1) status = 'partial';
+        else                                    status = 'compliant';
+
+        fwEntry[status]++;
+        fwEntry.controls.push({
+          id:                fc.id,
+          code:              fc.code,
+          title:             fc.title,
+          summary:           fc.summary,
+          severity:          fc.severity,
+          status:            status,
+          matchedKeywords:   matchedKeywords,
+          evidenceSectionIds: evidenceSectionIds,
+          evidenceRefs:      evidenceRefs,
+          evidenceSnippets:  evidenceSnippets
+        });
+
+        /* Auto-evidence for compliant controls (audit trail). */
+        if (status === 'compliant' && evidenceRefs.length > 0) {
+          evidenceItems.push({
+            policyId:          policy.id,
+            regId:              regId,
+            frameworkControlId: fc.id,
+            frameworkControl:   fc.code + ' \u2014 ' + fc.title,
+            policySectionRef:   evidenceRefs[0],
+            policySectionId:    evidenceSectionIds[0] || null,
+            snippet:            evidenceSnippets[0] || '',
+            matchedKeywords:    matchedKeywords
+          });
+        }
+      });
+
+      fwEntry.coveragePct = fwEntry.total > 0
+        ? Math.round(((fwEntry.compliant + fwEntry.partial * 0.5) / fwEntry.total) * 100)
+        : 0;
+      byFramework.push(fwEntry);
+    });
+
+    /* Aggregate. */
+    let c = 0, p = 0, m = 0, t = 0;
+    byFramework.forEach(function (bf) {
+      c += bf.compliant; p += bf.partial; m += bf.missing; t += bf.total;
+    });
+    const summary = {
+      totalControls:     t,
+      compliantControls: c,
+      partialControls:   p,
+      missingControls:   m,
+      coveragePct:       t > 0 ? Math.round(((c + p * 0.5) / t) * 100) : 0
+    };
+    /* The worst framework by missing-controls count surfaces in toasts/CTAs. */
+    summary.worstFramework = byFramework.slice().sort(function (a, b) {
+      return (b.missing + b.partial * 0.5) - (a.missing + a.partial * 0.5);
+    })[0] || null;
+
+    return { byFramework: byFramework, summary: summary, evidenceItems: evidenceItems };
+  }
+
+  /* Open Risks for every missing / partial framework control, and persist  */
+  /* auto-evidence for every compliant one so the Evidence Vault is useful. */
+  function applyComplianceGaps(policyId, scan) {
+    const policy = getPolicyById(policyId);
+    const out = { openedRisks: [], evidence: [], perFramework: {} };
+    if (!policy || !scan || !Array.isArray(scan.byFramework)) return out;
+
+    const fallbackCtrl = (policy.implementedByControls || [])[0] || (controls[0] && controls[0].id) || null;
+
+    function downshiftSeverity(sev) {
+      if (sev === 'critical') return 'high';
+      if (sev === 'high')     return 'medium';
+      if (sev === 'medium')   return 'low';
+      return 'low';
+    }
+
+    scan.byFramework.forEach(function (fw) {
+      out.perFramework[fw.regId] = { missing: fw.missing, partial: fw.partial, compliant: fw.compliant };
+
+      fw.controls.forEach(function (fc) {
+        if (fc.status === 'compliant') return;
+        const sev = fc.status === 'missing' ? fc.severity : downshiftSeverity(fc.severity);
+        const due = sev === 'critical' ? 7 : sev === 'high' ? 21 : 45;
+        const risk = {
+          id:                 'R-comp-' + Math.random().toString(36).slice(2, 8),
+          regId:              fw.regId,
+          controlId:          fallbackCtrl,
+          frameworkControlId: fc.id,
+          policyId:           policy.id,
+          title:              (fc.status === 'missing' ? 'Missing coverage of ' : 'Partial coverage of ') + fc.code + ' \u2014 ' + fc.title,
+          summary:            fc.summary,
+          severity:           sev,
+          businessUnitId:    'bu-cloud',
+          ownerId:            policy.ownerId || (personas[0] && personas[0].id) || null,
+          openSince:          new Date().toISOString().slice(0, 10),
+          remediationDueDays: due,
+          sourcePolicyId:     policy.id,
+          sourceFindingId:    fc.id,
+          gapType:            fc.status,                                  /* missing | partial */
+          status:             'open'
+        };
+        risks.push(risk);
+        indexes.risks[risk.id] = risk;
+        out.openedRisks.push(risk);
+      });
+    });
+
+    /* Auto-evidence: drop one entry per compliant control. */
+    if (Array.isArray(scan.evidenceItems)) {
+      scan.evidenceItems.forEach(function (e) {
+        const ev = {
+          id:                 'E-comp-' + Math.random().toString(36).slice(2, 8),
+          name:               e.frameworkControl + ' \u2014 ' + policy.title,
+          controlId:          fallbackCtrl,
+          frameworkControlId: e.frameworkControlId,
+          regId:              e.regId,
+          policyId:           policy.id,
+          policySectionId:    e.policySectionId,
+          policySectionRef:   e.policySectionRef,
+          snippet:            e.snippet,
+          source:             'policy section',
+          collectedAt:        new Date().toISOString().slice(0, 10),
+          expiresInDays:      365,
+          auto:               true
+        };
+        evidence.push(ev);
+        indexes.evidence[ev.id] = ev;
+        out.evidence.push(ev);
+      });
+    }
+
+    /* Nudge linked-control drift so coverage/control-drift sub-scores move. */
+    const bump = Math.min(20, scan.summary.missingControls * 3 + scan.summary.partialControls);
+    if (bump > 0) {
+      (policy.implementedByControls || []).forEach(function (cid) {
+        const c2 = indexes.controls[cid];
+        if (!c2) return;
+        c2.drift = Math.min(60, (c2.drift || 0) + bump);
+      });
+    }
+
+    return out;
+  }
+
   /* ------------------------ Helper indexes ------------------------------- */
   const byId   = (arr) => Object.fromEntries(arr.map(x => [x.id, x]));
   const indexes = {
@@ -733,6 +1410,33 @@ window.DATA = (() => {
     getPolicyFile:         getPolicyFile,
     linkControlToPolicy:   linkControlToPolicy,
     getPolicyForControl:   getPolicyForControl,
+    analyzePolicy:         analyzePolicy,
+    applyPolicyFindings:   applyPolicyFindings,
+    /* ---------- Server-hosted (Vercel Blob) policies ---------- */
+    getServerPolicies:     getServerPolicies,
+    refreshServerPolicies: refreshServerPolicies,
+    addServerPolicy:       addServerPolicy,
+    deleteServerPolicy:    deleteServerPolicy,
+    /* ---------- Framework controls + compliance scanner ---------- */
+    frameworkControls:     frameworkControls,
+    getFrameworkControlsForReg: function (regId) { return (frameworkControls[regId] || []).slice(); },
+    getFrameworkControlById:    function (fcId) {
+      const keys = Object.keys(frameworkControls);
+      for (let i = 0; i < keys.length; i++) {
+        const arr = frameworkControls[keys[i]];
+        for (let j = 0; j < arr.length; j++) if (arr[j].id === fcId) return Object.assign({ regId: keys[i] }, arr[j]);
+      }
+      return null;
+    },
+    allFrameworkControls:  function () {
+      const out = [];
+      Object.keys(frameworkControls).forEach(function (regId) {
+        frameworkControls[regId].forEach(function (fc) { out.push(Object.assign({ regId: regId }, fc)); });
+      });
+      return out;
+    },
+    scanPolicyCompliance:  scanPolicyCompliance,
+    applyComplianceGaps:   applyComplianceGaps,
     MAX_POLICY_FILE_BYTES: MAX_FILE_BYTES
   };
 })();

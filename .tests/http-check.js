@@ -4,11 +4,12 @@ const http = require('http');
 const PORT = Number(process.env.PORT) || 8080;
 const targets = [
   { path: '/',                                   contains: ['GRCentral', 'Montserrat'] },
-  { path: '/index.html',                         contains: ['GRCentral', 'assets/js/app.js', "frame-src 'self' blob:"] },
-  { path: '/assets/css/styles.css',              contains: ['Montserrat', 'gr-card'] },
+  { path: '/index.html',                         contains: ['GRCentral', 'assets/js/app.js', 'assets/js/live.js', 'id="live-clock"', "frame-src 'self' blob:"] },
+  { path: '/assets/css/styles.css',              contains: ['Montserrat', 'gr-card', 'live-fresh-pulse'] },
   { path: '/assets/js/data.js',                  contains: ['window.DATA', '32024R1689'] },
   { path: '/assets/js/risk-engine.js',           contains: ['RiskEngine', 'TrendMultiplier'] },
   { path: '/assets/js/components.js',            contains: ['window.UI', 'driftGauge'] },
+  { path: '/assets/js/live.js',                  contains: ['window.Live', '_tick', 'EUR-Lex SPARQL'] },
   { path: '/assets/js/views.js',                 contains: ['window.Views', 'regulationDetail'] },
   { path: '/assets/js/app.js',                   contains: ['Regulatory Radar', 'personaSwitcher'] },
   { path: '/README.md',                          contains: ['GRCentral', 'Risk Drift'] },

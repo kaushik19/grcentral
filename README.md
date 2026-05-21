@@ -27,10 +27,11 @@ and creates the preventive action with an owner and an SLA.
 5. [Risk Drift formula](#5-risk-drift-formula)
 6. [How to add a new regulatory source](#6-how-to-add-a-new-regulatory-source)
 7. [Internal Policies & uploads](#7-internal-policies--uploads)
-8. [Tests](#8-tests)
-9. [Push to GitHub](#9-push-to-github)
-10. [Deploy to Vercel](#10-deploy-to-vercel)
-11. [Roadmap](#11-roadmap)
+8. [Real-time activity engine](#8-real-time-activity-engine)
+9. [Tests](#9-tests)
+10. [Push to GitHub](#10-push-to-github)
+11. [Deploy to Vercel](#11-deploy-to-vercel)
+12. [Roadmap](#12-roadmap)
 
 ---
 
@@ -62,29 +63,43 @@ needs nothing but a modern browser).
 grcentral/
 ├── index.html                  # app shell (sidebar + topbar + view container)
 ├── README.md
-├── package.json                # dev/test scripts
-├── vercel.json                 # Vercel deploy config
+├── package.json                # dev/test scripts + @vercel/blob dependency
+├── vercel.json                 # Vercel deploy config + security headers + CSP
 ├── .gitignore
+├── api/
+│   ├── _lib/storage.js         # thin wrapper over @vercel/blob (put/list/del +
+│   │                           #   validation, 4 MB cap, MIME allow-list)
+│   ├── policies.js             # /api/policies — GET (list) + POST (upload)
+│   └── policies/[id].js        # /api/policies/<id> — GET (one) + DELETE
 ├── assets/
 │   ├── css/styles.css          # black + babcom-orange theme, Montserrat
 │   ├── img/babcom-logo.png     # babcom wordmark (sidebar + splash)
 │   └── js/
-│       ├── data.js             # mock dataset: 11 regs, 11 sources, 7 personas,
-│       │                       #   12 controls, 6 seeded policies + localStorage
-│       │                       #   helpers for user-uploaded policies & control links
+│       ├── data.js             # mock dataset + localStorage helpers +
+│       │                       #   serverPolicies cache + framework controls +
+│       │                       #   policy analyzer + compliance scanner
+│       ├── cloud-policies.js   # /api/policies client adapter (feature-detect,
+│       │                       #   single-flight ping, list/upload/delete)
 │       ├── risk-engine.js      # the Risk Drift formula
 │       ├── components.js       # reusable UI fragments + htmlEscape / safeUrl
+│       ├── live.js             # realtime engine: clock, activity ticker,
+│       │                       #   weighted source-event table, hot-event
+│       │                       #   injection into DATA.changes, DOM sweep
 │       ├── views.js            # one renderer per route + Add-Source modal +
 │       │                       #   Upload-Policy modal + Policy-Picker modal
-│       └── app.js              # router + persona switcher + bootstrap
+│       └── app.js              # router + persona switcher + bootstrap +
+│                               #   Live.start() + cloud hydration on load
 └── .tests/
-    ├── server.js               # tiny no-cache static file server
-    ├── e2e.js                  # 29-check end-to-end suite
+    ├── server.js               # tiny no-cache static file server (dev)
+    ├── e2e.js                  # 30-check end-to-end suite
     ├── ux-check.js             # 28-check UX-round suite
     ├── verifier-check.js       # 19-check Add-Source verifier suite
     ├── security-check.js       # 45-check XSS + headers suite
-    ├── policies-check.js       # 85-check policies + viewer suite
-    └── http-check.js           # 11-check HTTP smoke test
+    ├── policies-check.js       # 184-check policies + viewer + analyzer +
+    │                           #   framework controls + compliance scan suite
+    ├── live-check.js           # 46-check realtime-engine suite
+    ├── cloud-check.js          # 57-check Vercel Blob adapter + API handlers
+    └── http-check.js           # 12-check HTTP smoke test
 ```
 
 **Tech:** Tailwind via CDN, Chart.js 4 via CDN, Lucide icons via CDN, Google
@@ -97,15 +112,15 @@ primary, Montserrat 300–900, subtle radial glow, glass-card surfaces.
 
 | Route                  | View                  | Highlights                                                                          |
 |------------------------|-----------------------|-------------------------------------------------------------------------------------|
-| `dashboard`            | Executive overview    | Drift gauge, KPI tiles, gradient trend chart, Risk-by-category donut, Risk Heatmap, Upcoming Reviews, Live Radar, Preventive Actions, Coverage matrix |
+| `dashboard`            | Executive overview    | Drift gauge, **clickable KPI tiles** (Open Risks → Gaps, Critical → Gaps, Aged Evidence → Evidence, Reg. changes → Radar), gradient trend chart, Risk-by-category donut, Risk Heatmap, Upcoming Reviews, Live Radar, Preventive Actions, Coverage matrix |
 | `radar`                | Regulatory Radar      | Live timeline of detected changes, most-active regulations, source health           |
 | `regulation/{id}`      | Regulation Detail     | CELEX / ELI metadata, **article-level diff** vs previous snapshot, drift breakdown |
 | `drift`                | Risk Drift            | 90-day per-regulation trend, formula card, per-component breakdown table            |
-| `gaps`                 | Compliance Gaps       | Risk register with severity / SLA                                                   |
+| `gaps`                 | Compliance Gaps       | Risks grouped **by policy** with **Framework** and **Framework control** columns; per-framework filter chips; "Coverage" CTA per group |
 | `actions`              | Preventive Actions    | Kanban (Planned / In progress / Done) with owners and effort                        |
-| `controls`             | Controls Library      | Controls mapped to frameworks + **Linked policy** chip per card + change/link affordance |
-| `policies`             | Internal Policies     | 6 seeded policies + **Upload policy** flow (PDF/MD/HTML/TXT up to 3 MB); status + source filters; per-card open/delete |
-| `evidence`             | Evidence Vault        | Freshness tracking: feeds the Evidence-Aging factor of the formula                 |
+| `controls`             | Controls              | **Framework controls** (clauses of every regulation) grouped by framework with cross-policy coverage, **plus** operational controls library with **Linked policy** chip per card |
+| `policies`             | Internal Policies     | 6 seeded policies + **Upload policy** flow (PDF/MD/HTML/TXT). Uploads land on **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (4 MB cap, visible to every visitor) or fall back to `localStorage` (3 MB, this browser only); a banner tells you which mode is live |
+| `evidence`             | Evidence Vault        | Audit trail with **Policy + Framework control + Section / snippet** columns; auto-derived from compliant scans; feeds the Evidence-Aging factor |
 | `sources`              | Regulatory Sources    | All 11 feeds with format, polling, ingestion, doc count + **Add source** flow      |
 | `team`                 | Team                  | 7 personas: Aarav Mehta (CCO), Priya Sharma, Rohan Iyer, Ananya Reddy, Vikram Singh, Kavya Nair, Aditya Joshi |
 | `about`                | About                 | Product brief, formula explainer, drift bands                                       |
@@ -182,16 +197,31 @@ changes is **modified**, new article IDs are **added**, missing ones are
 every consolidated version.
 
 ### Logical data model
-`Regulation`, `Article`, `Change`, `Control`, **`InternalPolicy`** (seeded
-or user-uploaded, with `mapsToRegulations[]` + `implementedByControls[]`),
-`ControlPolicyMap(controlId → policyId)` (user overrides), `Evidence`,
-`RiskItem`, `Action`, `Persona/User`, `BusinessUnit`, `SourceFeed`,
-`DriftSnapshot(date, components, score)`.
+`Regulation` (a.k.a. **framework**), `Article`, `Change`,
+**`FrameworkControl`** (a specific clause of a framework — e.g. GDPR
+Art. 32, AI Act Annex III, DORA Art. 28 — with `keywords[]` + `severity`),
+`Control` (operational / technical), **`InternalPolicy`** (seeded or
+user-uploaded, with `mapsToRegulations[]` + `implementedByControls[]`),
+`ControlPolicyMap(controlId → policyId)` (user overrides), `Evidence`
+(now with `policyId`, `frameworkControlId`, `policySectionRef`,
+`snippet`), `RiskItem` (now with `frameworkControlId`, `sourcePolicyId`,
+`gapType ∈ {missing, partial}`), `Action`, `Persona/User`,
+`BusinessUnit`, `SourceFeed`, `DriftSnapshot(date, components, score)`.
 
-A **Regulation** says *what* the law requires. An **InternalPolicy** says
-*how* the company complies. A **Control** is the technical implementation.
-Each layer links to the one above so a regulatory change can be traced
-through to every affected policy, control, evidence item and risk.
+The chain reads top-down:
+
+```
+Framework (GDPR)
+ └─ Framework control (Art. 32 — Security of processing)
+     └─ Internal policy (Encryption Standard v4.1)
+         └─ Policy section (§3 — Encryption at rest)
+             └─ Operational control (C-DP-014)
+                 └─ Evidence (KMS key rotation log)
+```
+
+When an internal policy doesn't cover a framework control, that is a
+**compliance gap** — exactly what the Compliance Gaps page now shows,
+attributed to the originating policy, framework and clause.
 
 ### Production architecture (not built in this prototype)
 - Polling workers per `SourceFeed` (Python + Celery / Temporal).
@@ -302,9 +332,11 @@ seeded policies and lets users add more by uploading a file.
 - **Meta tiles**: owner, approver, effective date, next-review date.
 - **Mapped chips**: every regulation and control linked to the policy.
 - **Body**, format-dependent:
-  - **PDF (uploaded)**: rendered in an `<iframe>` from a `blob:` URL that
-    we generate from the in-browser file payload. Sandboxed with
-    `sandbox="allow-same-origin"` (no scripts, no top-nav).
+  - **PDF (uploaded)**: rendered in an `<iframe>` from a `blob:` URL on
+    the app's own origin. We sniff the first bytes for the `%PDF-` magic
+    header; non-PDF uploads short-circuit to a clear "not a valid PDF"
+    warning. An "Open in new tab" CTA sits above the preview so the user
+    can always fall back to their browser's standalone viewer.
   - **Markdown (uploaded)**: tokenised and rendered with a *tiny* in-house
     Markdown helper (`_renderMarkdown`). The source is HTML-escaped
     **first**, then a small set of tokens (headings, lists, bold, italic,
@@ -345,6 +377,120 @@ persisted to `localStorage` under `grc.policyFile.<id>` (≤ 3 MB cap). The
 metadata lives at `grc.userPolicies`. Reopening the app reconstitutes both.
 **Nothing is uploaded over the network: it all stays in the browser.**
 
+### Policy verification (on upload)
+
+Every upload runs through an in-browser **policy analyzer** before it lands in
+the catalogue. The analyzer answers the only question a GRC platform actually
+cares about: _"does this policy add risk, or close it?"_
+
+`DATA.analyzePolicy(meta, base64?, mimeType?)` returns:
+
+```js
+{
+  findings: [{ id, severity, category, title, detail, recommendation, regImpact }],
+  summary:  { total, critical, high, medium, low, opensRisks, worstRegId },
+  projectedDriftDelta: { 'reg-gdpr': 8, 'reg-ai-act': 12, ... }
+}
+```
+
+Heuristics fall into three buckets:
+
+| Bucket          | Examples of what we look for                                                                                   |
+|-----------------|---------------------------------------------------------------------------------------------------------------|
+| **Metadata**    | missing owner / approver, no description, review date already in the past, draft policies in production paths |
+| **Coverage**    | no mapped regulation, no implementing control, title overlaps an existing policy                              |
+| **Content**     | body < 150 words; missing the keywords a regulation _must_ reference (e.g. GDPR-mapped policy with no mention of "Article 32" or "encryption", AI-Act-mapped policy with no "high-risk" or "Annex III", DORA with no "third-party" or "concentration risk", CRA with no "SBOM", etc.) |
+
+The upload modal shows the analyzer output as a **Policy verification** panel:
+severity chips, the top findings with severity-coloured dots, and a
+`Projected drift: +8 on GDPR, +4 on AI Act` line. The **Save** button relabels
+itself to `Save & open N risks` so it's obvious what saving will do.
+
+On save, `DATA.applyPolicyFindings(policyId, analysis)` actually materialises
+the analysis:
+
+- Every **high** or **critical** finding is opened as a real `Risk` against the
+  mapped regulation (severity carries over; `sourcePolicyId` + `sourceFindingId`
+  tag the risk so we can trace it back to the upload).
+- The linked controls' `drift %` is bumped (capped at +20) so the risk-engine's
+  Coverage / Control-Drift sub-scores move on the next render.
+- A top-right **toast** confirms what just changed (`"3 risks opened. Drift
+  expected to rise on GDPR (+12). Review them in Compliance Gaps."`) with a
+  one-click **Open Gaps** CTA.
+
+The user lands back on Policies, sees the new upload at the top, opens the
+Dashboard, and the drift gauge has moved.
+
+### Framework-control compliance scan
+
+After the metadata heuristics run, every upload is also scanned against the
+**framework controls** (clauses) of the regulations it claims to satisfy.
+This is the question an auditor would actually ask: _"which sections of
+GDPR does this policy cover, and which does it miss?"_
+
+`DATA.frameworkControls['reg-gdpr']` (and one entry per framework) holds the
+seeded clauses:
+
+```js
+{ id: 'gdpr-fc-art32', code: 'Art. 32', title: 'Security of processing',
+  summary: 'Appropriate technical and organisational measures…',
+  keywords: ['encryption', 'art. 32', 'pseudonymisation', 'integrity', ...],
+  severity: 'critical' }
+```
+
+`DATA.scanPolicyCompliance(policy)` walks every linked framework and, for
+each framework control, searches the policy's title, description, tags
+and **section bodies** for the control's keywords:
+
+- **compliant** = ≥ 2 keyword hits across sections,
+- **partial**   = 1 weak hit,
+- **missing**   = no hits.
+
+It returns:
+
+```js
+{
+  byFramework: [{
+    regId, name, total, compliant, partial, missing, coveragePct,
+    controls: [{ id, code, title, severity, status,
+                 matchedKeywords, evidenceRefs, evidenceSnippets }]
+  }, …],
+  summary:       { totalControls, compliantControls, partialControls,
+                   missingControls, coveragePct, worstFramework },
+  evidenceItems: [{ policyId, frameworkControlId, policySectionRef,
+                    snippet, matchedKeywords }]
+}
+```
+
+The upload-modal **Policy verification** panel now renders this as an
+expandable per-framework breakdown:
+
+```
+GDPR    3/6 compliant   (1 partial, 2 missing)   58%
+  ● Art. 5    Principles relating to processing            compliant
+  ● Art. 32   Security of processing                       compliant
+  ● Art. 30   Records of processing activities             missing
+  ● Art. 33   Personal-data breach notification            missing
+```
+
+On **Save**, `DATA.applyComplianceGaps(policyId, scan)` materialises the
+scan:
+
+- every **missing** framework control opens a `Risk` with the framework
+  control's severity (`gapType: 'missing'`),
+- every **partial** control opens a `Risk` one severity below
+  (`gapType: 'partial'`),
+- every **compliant** control creates an `Evidence` entry pointing at the
+  policy section that satisfied it (`auto: true`, `snippet` carries a
+  140-char window of matched text).
+
+The Compliance Gaps page groups these by **policy**, shows the
+**Framework** + **Framework control** columns, and offers framework
+filter chips. The Internal Policies card now exposes a **Coverage**
+button that opens a focused per-policy coverage modal, and the Evidence
+Vault renders the new **Policy / Framework control / Section / snippet**
+columns so auditors can read the proof in place.
+
 ### Link a policy from Controls
 
 **Controls → any card → Link policy / Change**. Opens a reusable picker
@@ -366,6 +512,14 @@ Explicit user choices are persisted to `localStorage` under
 | `DATA.getPolicyFile(id)`                       | Returns `{mimeType, base64}` or `null`                        |
 | `DATA.linkControlToPolicy(controlId, policyId)`| Sets / clears the explicit mapping                            |
 | `DATA.getPolicyForControl(controlId)`          | Explicit map → falls back to inferred → `null`                |
+| `DATA.analyzePolicy(meta, base64?, mimeType?)` | Heuristic verification → `{ findings, summary, projectedDriftDelta }` |
+| `DATA.applyPolicyFindings(policyId, analysis)` | Opens risks for high/critical findings + bumps linked-control drift; returns `{ openedRisks, driftBumped, perRegulationDelta }` |
+| `DATA.frameworkControls`                       | Object keyed by `regId` → array of framework controls (clauses) |
+| `DATA.getFrameworkControlsForReg(regId)`       | Copy of the framework's controls                              |
+| `DATA.getFrameworkControlById(fcId)`           | Single framework control (with its `regId`)                   |
+| `DATA.allFrameworkControls()`                  | Flat list across every framework                              |
+| `DATA.scanPolicyCompliance(policy)`            | Section-by-section coverage scan → `{ byFramework, summary, evidenceItems }` |
+| `DATA.applyComplianceGaps(policyId, scan)`     | Opens a `Risk` for every `missing` / `partial` framework control and an `Evidence` entry for every `compliant` one |
 | `DATA.MAX_POLICY_FILE_BYTES`                   | `3 * 1024 * 1024`: the in-browser cap                        |
 
 ### Security posture of the upload flow
@@ -376,9 +530,17 @@ Explicit user choices are persisted to `localStorage` under
 - **File content is never injected into the DOM as HTML.** It's stored
   as base64, reconstituted as a `Blob`, and either opened in a new tab
   with `window.open(url, '_blank', 'noopener,noreferrer')` or framed in
-  the in-app viewer with `sandbox="allow-same-origin"` (no scripts, no
-  top-navigation). The blob URLs are revoked when the modal closes or
-  after 60 seconds for the new-tab flow.
+  the in-app viewer from a `blob:` URL on our **own** origin. The blob
+  URLs are revoked when the modal closes or after 60 seconds for the
+  new-tab flow.
+- **PDF preview**: the iframe is intentionally unsandboxed because the
+  browser's built-in PDF viewer needs scripts to run (toolbar, paging,
+  search), and the blob URL is same-origin. The PDF is rendered by the
+  browser's PDF engine, not as a web page, so it can't navigate or
+  script the parent. `frame-ancestors 'none'` still prevents anyone
+  from framing us. If the PDF file doesn't carry the `%PDF-` magic
+  header we refuse to render the iframe at all and surface a clear
+  "this isn't a valid PDF" warning with an "Open in new tab" CTA.
 - **Uploaded Markdown is tokenised, not parsed.** The body is HTML-escaped
   first; only a fixed grammar (headings, bold, italics, code, list items)
   is then re-wrapped in safe tags. `<script>alert(1)</script>` inside a
@@ -406,7 +568,69 @@ Explicit user choices are persisted to `localStorage` under
 
 ---
 
-## 8. Tests
+## 8. Real-time activity engine
+
+GRCentral doesn't have a backend in this prototype, but it does have a
+deterministic in-browser engine that simulates the experience of running
+the app on top of live regulatory feeds. You'll see it in three places:
+
+- **Topbar** : a live clock (`HH:MM:SS IST`) next to a pulsing **LIVE**
+  pill. It ticks every second.
+- **Sidebar** : the **Activity** tile shows the four most-recent poll
+  events from the seeded source table, with relative timestamps
+  (`12s ago`, `2m ago`) that auto-update every second. New events slide
+  in from the top with a brief orange glow.
+- **Across the app** : every element annotated with
+  `data-live-since="<unix-ms>"` is rewritten every second by the engine's
+  DOM sweep. The Radar timeline, Source-health micro-list, Sources cards
+  and Dashboard hero subtitle all use it.
+
+### How a tick works
+
+`Live._tick()` runs every 6 to 12 seconds. It picks an entry from a
+weighted table of realistic events:
+
+| Tone   | % of ticks | Examples                                              |
+|--------|------------|-------------------------------------------------------|
+| Quiet  | ~70%       | "EUR-Lex polled, no changes" · "ENISA polled, no changes" |
+| Soft   | ~25%       | "CISA: 1 new advisory (KEV catalog)" · "CIS Benchmarks: Kubernetes v1.8.0 published" |
+| Hot    | ~5%        | "AI Act Article 53 consolidated version published" · "DORA RTS: ICT third-party concentration thresholds revised" |
+
+Hot events do something extra: they `unshift` a fully-formed `Change`
+record into `DATA.changes`, bump the regulation's `lastChange` to now,
+and notify every subscriber. If the user is currently on the Dashboard,
+Radar, Drift or Regulation-detail view, the bootstrap subscriber
+re-renders so the new entry appears at the top of the timeline with a
+**NEW** chip and a pulsing dot for the first 60 seconds.
+
+### Sources view countdowns
+
+Every source card carries a `<span data-live-next="<id>">` chip that
+counts down to the next simulated poll for that source ("next in 4m 09s").
+When the countdown hits zero the chip flips to "polling…" and a new
+randomised next-poll time is set. Combined with the small pulsing dot
+next to each source, the Sources view feels like an active operations
+console.
+
+### Sync now
+
+Clicking **Sync now** in the sidebar calls `Live.syncNow()`, which fires
+three back-to-back ticks. You'll see three new rows fly into the Activity
+tile, and if any one of them happens to be a hot event you'll see the
+Radar grow a new entry.
+
+### Test surface
+
+The engine has its own deterministic suite at `.tests/live-check.js`
+(45 assertions). It drives `Live._tick()` directly without timers,
+forces a hot event by repeated picking, asserts the DOM sweep updates
+`live-clock` / `[data-live-since]` / `[data-live-next]` nodes, and
+confirms the Radar timeline renders the **NEW** chip for any change
+detected in the last 60 seconds.
+
+---
+
+## 9. Tests
 
 The repo ships with six pure-Node test suites. Run them all with:
 
@@ -422,14 +646,24 @@ Or individually:
 | `node .tests/ux-check.js`            | UX round               | CIS healed, source enrichment, sources view CTA, chart beautification, Add-Source wiring        |
 | `node .tests/verifier-check.js`      | Add-Source verifier    | URL canonicaliser, simulator accepts / rejects, canonical-URL propagation                       |
 | `node .tests/security-check.js`      | Security & XSS         | `htmlEscape` / `safeUrl`, OWASP XSS payloads, `rel="noopener noreferrer"`, CSP + Vercel headers |
-| `node .tests/policies-check.js`      | Policies + viewer      | Seeded data, `addUserPolicy` validation, link/unlink, render of policies + upload modal + picker, **viewer (PDF / Markdown / sections / highlight)**, XSS round |
-| `node .tests/http-check.js`          | HTTP smoke             | Every asset 200s with the right MIME, 404 path returns 404, CSP carries `frame-src 'self' blob:` |
+| `node .tests/policies-check.js`      | Policies + viewer + analyzer | Seeded data, `addUserPolicy` validation, link/unlink, render of policies + upload modal + picker, **viewer (PDF / Markdown / sections / highlight)**, **`analyzePolicy` heuristics + `applyPolicyFindings` opens risks + bumps control drift**, clickable KPI tiles, XSS round |
+| `node .tests/live-check.js`          | Real-time engine       | Module surface, formatters, log seeding, deterministic ticks, hot-event injection into `DATA.changes`, DOM sweep, Radar **NEW** chip on fresh items |
+| `node .tests/http-check.js`          | HTTP smoke             | Every asset 200s with the right MIME, 404 path returns 404, CSP carries `frame-src 'self' blob:`, index ships `id="live-clock"` |
 
-Current state: **217 / 217 tests passing** (29 + 28 + 19 + 45 + 85, plus 11 HTTP smoke checks when the server is running).
+Current state: **414 / 414 offline tests passing** (e2e 30 + ux 28 + verifier 19 + security 45 + policies 184 + live 46 + cloud 62 = 414), plus 12 HTTP smoke checks when the dev server is running.
+
+`.tests/cloud-check.js` exercises both halves of the server-storage feature:
+the in-browser `CloudPolicies` adapter (feature detection, single-flight
+ping, upload / delete fetch shapes, DATA hydration + cache mutation) and
+the serverless route handlers (`api/policies.js`, `api/policies/[id].js`)
+with a stubbed `@vercel/blob` module, asserting validation, error codes
+(`TITLE_REQUIRED`, `TOO_LARGE`, `BLOB_NOT_CONFIGURED`, `BAD_ID`),
+path-traversal rejection, 4 MB body cap, 503 fallback when the env var
+is missing, and end-to-end POST + GET + DELETE round trips.
 
 ---
 
-## 9. Push to GitHub
+## 10. Push to GitHub
 
 The repo isn't initialised yet. From the project root:
 
@@ -453,7 +687,7 @@ or stays as a normal GitHub repo.
 
 ---
 
-## 10. Deploy to Vercel
+## 11. Deploy to Vercel
 
 GRCentral is 100% static: it deploys to Vercel with **zero build step**.
 
@@ -524,17 +758,61 @@ curl -sI https://<your-project>.vercel.app/assets/js/views.js \
 You should see `200 OK`, `application/javascript; charset=utf-8`,
 and `Cache-Control: public, max-age=300, must-revalidate`.
 
+### Cross-user uploads via Vercel Blob
+
+By default GRCentral runs in **local-only mode**: a policy uploaded in
+browser A stays in browser A's `localStorage`. To make every upload
+visible to every visitor, attach **Vercel Blob** to the project. This
+unlocks the `/api/policies` serverless functions and switches the
+Internal Policies page into "Server storage active" mode.
+
+```bash
+# 1. From the project root, enable Blob for this project.
+vercel blob create grcentral-policies
+# This creates the store and prints a connection summary.
+
+# 2. Vercel auto-injects BLOB_READ_WRITE_TOKEN into Production + Preview
+#    environments. Pull it locally if you want `vercel dev` to talk to Blob.
+vercel env pull .env.local
+```
+
+Or in the dashboard: **Project -> Storage -> Connect Store -> Blob ->
+Create New** -> name it `policies`. Vercel does the env-var wiring.
+
+What you get:
+
+- `/api/policies` (GET = list, POST = upload) and
+  `/api/policies/<id>` (GET = single, DELETE = remove) are served by the
+  two functions under `api/`.
+- Uploaded payloads land at `policies/files/<id>.<ext>` on
+  `https://<storeid>.public.blob.vercel-storage.com`.
+- Metadata lands at `policies/meta/<id>.json` so the next visitor's
+  browser can rehydrate the catalogue on first render.
+- File-size cap is 4 MB (Vercel function body limit is 4.5 MB).
+- The Policies page shows a **"Server storage active. Visible to every
+  visitor."** banner; uploaded cards carry a cyan **"Server"** pill;
+  the delete button does a real DELETE (metadata + file).
+
+If the env var is missing, the API returns `503 { available: false }`,
+the client transparently flips back to localStorage, and the Policies
+page shows a **"Local-only mode"** banner instead. No code branches
+required.
+
+Costs: Vercel Blob has a generous free tier (5 GB storage + 100 GB
+egress on Hobby, as of writing) which is more than enough for this app
+unless a single tenant uploads thousands of policies.
+
 ---
 
-## 11. Roadmap
+## 12. Roadmap
 
 - Real EUR-Lex SPARQL connector + Akoma Ntoso XML parser
 - LLM-assisted obligation extraction and auto-mapping to ISO 27001 / NIST CSF
-- Multi-tenant + SSO (SAML / OIDC)
+- Multi-tenant + SSO (SAML / OIDC) on top of the Blob storage layer
 - Jira / ServiceNow / Slack action dispatch
 - Board-ready PDF export
-- Server-side persistence for user-added sources and uploaded policies
-  (currently in browser `localStorage` only: files capped at 3 MB)
+- Server-side persistence for user-added sources (policies are already
+  on Vercel Blob; sources are still in `localStorage`)
 - Antivirus scan + PII detection in the policy-upload pipeline before persistence
 - Policy diffing across versions (same engine as the article-level regulation diff)
 - Bulk attestation campaigns + reminders for policies due for review

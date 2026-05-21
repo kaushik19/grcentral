@@ -237,6 +237,73 @@ body::before {
   display: inline-block;
 }
 
+/* Activity feed: the newest row slides down + glows briefly. */
+@keyframes liveRowIn {
+  from { opacity: 0; transform: translateY(-4px); background: rgba(255,90,31,0.10); }
+  60%  { opacity: 1; transform: none;            background: rgba(255,90,31,0.06); }
+  to   { opacity: 1;                              background: transparent; }
+}
+.live-row-fresh { animation: liveRowIn .9s ease-out both; border-radius: 4px; padding: 1px 2px; }
+
+/* Subtle pulse on freshly-detected radar items (< 60s old). */
+@keyframes liveFreshPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,90,31,0.55); }
+  50%      { box-shadow: 0 0 0 5px rgba(255,90,31,0); }
+}
+.live-fresh-pulse { animation: liveFreshPulse 1.6s infinite; }
+
+/* Clickable KPI tiles : the arrow drifts toward the corner on hover. */
+.kpi-tile-clickable { transition: transform .15s ease, border-color .15s ease; }
+.kpi-tile-clickable:hover { border-color: rgba(255,90,31,0.35); }
+.kpi-tile-clickable:hover .kpi-arrow {
+  color: #ff9c6b !important;
+  transform: translate(2px, -2px);
+}
+.kpi-arrow { transition: transform .15s ease, color .15s ease; }
+
+/* Toast (top-right floating notification, slides in/out). */
+@keyframes toastIn  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(20px); } }
+.toast-stack {
+  position: fixed; top: 64px; right: 18px; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 380px; pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: #15151a; border: 1px solid rgba(255,90,31,0.25);
+  border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 20px 50px -20px rgba(0,0,0,0.7), 0 0 30px -10px rgba(255,90,31,0.25);
+  animation: toastIn .25s ease-out both;
+  font-size: 12px; line-height: 1.45; color: #fff;
+}
+.toast.toast-leaving { animation: toastOut .25s ease-in both; }
+.toast .toast-title  { font-weight: 700; font-size: 12.5px; margin-bottom: 2px; }
+.toast .toast-body   { color: rgba(255,255,255,0.7); }
+.toast .toast-cta    { margin-top: 8px; }
+
+/* Active state for clickable filter chips (used on Compliance Gaps). */
+.chip-active {
+  background: rgba(255,90,31,0.18) !important;
+  border-color: rgba(255,90,31,0.55) !important;
+  color: #ffc7a3 !important;
+}
+
+/* Finding card inside the upload modal. */
+.finding {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.25);
+}
+.finding .dot { width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; flex-shrink: 0; }
+.finding.sev-critical .dot { background: #fb7185; }
+.finding.sev-high     .dot { background: #fbbf24; }
+.finding.sev-medium   .dot { background: #ff7a3d; }
+.finding.sev-low      .dot { background: #34d399; }
+.finding.sev-critical { border-color: rgba(251,113,133,0.35); }
+.finding.sev-high     { border-color: rgba(251,191,36,0.30);  }
+
 /* Modal */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 90;
