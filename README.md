@@ -27,11 +27,10 @@ and creates the preventive action with an owner and an SLA.
 5. [Risk Drift formula](#5-risk-drift-formula)
 6. [How to add a new regulatory source](#6-how-to-add-a-new-regulatory-source)
 7. [Internal Policies & uploads](#7-internal-policies--uploads)
-8. [Demo scenario (the 30-second story)](#8-demo-scenario-the-30-second-story)
-9. [Tests](#9-tests)
-10. [Push to GitHub](#10-push-to-github)
-11. [Deploy to Vercel](#11-deploy-to-vercel)
-12. [Roadmap](#12-roadmap)
+8. [Tests](#8-tests)
+9. [Push to GitHub](#9-push-to-github)
+10. [Deploy to Vercel](#10-deploy-to-vercel)
+11. [Roadmap](#11-roadmap)
 
 ---
 
@@ -84,7 +83,7 @@ grcentral/
     ├── ux-check.js             # 28-check UX-round suite
     ├── verifier-check.js       # 19-check Add-Source verifier suite
     ├── security-check.js       # 45-check XSS + headers suite
-    ├── policies-check.js       # 103-check policies + viewer + demo suite
+    ├── policies-check.js       # 85-check policies + viewer suite
     └── http-check.js           # 11-check HTTP smoke test
 ```
 
@@ -314,9 +313,10 @@ seeded policies and lets users add more by uploading a file.
   - **HTML / TXT (uploaded)**: shown inside `<pre>` as escaped text. We
     do not render uploaded HTML.
   - **Seeded policy (no attached file)**: the policy's `sections[]` array
-    is rendered as a clean reading view with `§` numbering. The demo
-    scenario uses `opts.highlightSectionId` to flag the section that
-    needs to change.
+    is rendered as a clean reading view with `§` numbering. Callers can
+    pass `opts.highlightSectionId` to scroll-to and flag a specific
+    section (useful when an action like "revise §3 for Article 6
+    amendment" deep-links into the viewer).
 - **Footer**: filename + size, "Open in new tab" (uses `Views.openPolicyDocument()`),
   Done.
 
@@ -406,40 +406,7 @@ Explicit user choices are persisted to `localStorage` under
 
 ---
 
-## 8. Demo scenario (the 30-second story)
-
-Click **Run demo scenario** in the left sidebar. The app deterministically
-walks through the exact thing a customer wants to see:
-
-1. **What changed.** A new entry appears at the top of the Radar:
-   *"AI Act Article 6 amended: high-risk classification now also covers
-   AI systems that materially influence consumer-credit decisions."*
-   Source: EUR-Lex, CELEX `32024R1689`.
-2. **What it does to us.** Three controls (`C-AI-002`, `C-AI-003`,
-   `C-AI-004`) jump 12 points of drift. The AI Act moves to the top of
-   the drift radar. A new **P1 risk** is opened against the
-   Retail Banking EU business unit, owned by Priya Sharma, 5-day SLA.
-3. **What needs updating.** The walkthrough names the exact policy
-   section: **Responsible AI Use Policy §3 — High-risk system
-   obligations**. Click *Open policy at §3* and the in-app viewer opens
-   the policy already scrolled to that section, with a "NEEDS UPDATE"
-   badge on the section header.
-4. **What we already did.** A preventive action is created and linked
-   to that policy section (`policyId: pol-ai-use`, `policySectionId: s3`).
-
-The scenario is **idempotent** (clicking the button twice doesn't
-double-apply) and **reversible** (the modal has a *Reset demo* button
-that restores `DATA.changes`, `DATA.risks`, `DATA.actions`, the AI Act
-`lastChange` and the three control drift values to their pre-demo state).
-
-Implementation: `Views.runDemoScenario()` and `Views.resetDemoScenario()`
-in `assets/js/views.js`. The full state snapshot lives in a module-local
-`DEMO_STATE` and is asserted by the 20-check `[12]` block of
-`.tests/policies-check.js`.
-
----
-
-## 9. Tests
+## 8. Tests
 
 The repo ships with six pure-Node test suites. Run them all with:
 
@@ -455,14 +422,14 @@ Or individually:
 | `node .tests/ux-check.js`            | UX round               | CIS healed, source enrichment, sources view CTA, chart beautification, Add-Source wiring        |
 | `node .tests/verifier-check.js`      | Add-Source verifier    | URL canonicaliser, simulator accepts / rejects, canonical-URL propagation                       |
 | `node .tests/security-check.js`      | Security & XSS         | `htmlEscape` / `safeUrl`, OWASP XSS payloads, `rel="noopener noreferrer"`, CSP + Vercel headers |
-| `node .tests/policies-check.js`      | Policies, viewer, demo | Seeded data, `addUserPolicy` validation, link/unlink, render of policies + upload modal + picker, **viewer (PDF / Markdown / sections / highlight)**, **demo scenario apply / idempotency / reset**, XSS round |
+| `node .tests/policies-check.js`      | Policies + viewer      | Seeded data, `addUserPolicy` validation, link/unlink, render of policies + upload modal + picker, **viewer (PDF / Markdown / sections / highlight)**, XSS round |
 | `node .tests/http-check.js`          | HTTP smoke             | Every asset 200s with the right MIME, 404 path returns 404, CSP carries `frame-src 'self' blob:` |
 
-Current state: **235 / 235 tests passing** (29 + 28 + 19 + 45 + 103, plus 11 HTTP smoke checks when the server is running).
+Current state: **217 / 217 tests passing** (29 + 28 + 19 + 45 + 85, plus 11 HTTP smoke checks when the server is running).
 
 ---
 
-## 10. Push to GitHub
+## 9. Push to GitHub
 
 The repo isn't initialised yet. From the project root:
 
@@ -486,7 +453,7 @@ or stays as a normal GitHub repo.
 
 ---
 
-## 11. Deploy to Vercel
+## 10. Deploy to Vercel
 
 GRCentral is 100% static: it deploys to Vercel with **zero build step**.
 
@@ -559,7 +526,7 @@ and `Cache-Control: public, max-age=300, must-revalidate`.
 
 ---
 
-## 12. Roadmap
+## 11. Roadmap
 
 - Real EUR-Lex SPARQL connector + Akoma Ntoso XML parser
 - LLM-assisted obligation extraction and auto-mapping to ISO 27001 / NIST CSF

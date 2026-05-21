@@ -288,50 +288,9 @@ check('viewer markdown still produced a heading',   /<h\d[^>]*>\s*heading/i.test
 DATA.deleteUserPolicy(xssVw.policy.id);
 
 /* --------------------------------------------------------------------- */
-console.log('\n[12] Demo scenario (trigger regulatory change)');
-check('Views.runDemoScenario is a function',        typeof Views.runDemoScenario === 'function');
-check('Views.resetDemoScenario is a function',      typeof Views.resetDemoScenario === 'function');
-
-const changesBefore = DATA.changes.length;
-const risksBefore   = DATA.risks.length;
-const actionsBefore = DATA.actions.length;
-const aiActChangeBefore = DATA.indexes.regulations['reg-ai-act'].lastChange;
-const ai002DriftBefore  = DATA.indexes.controls['C-AI-002'].drift;
-
-const demoModals = [];
-UI.openModal = (h) => { demoModals.push(h); };
-try { Views.runDemoScenario(); } catch (e) {}
-UI.openModal = origOpen;
-const dm = demoModals[0] || '';
-
-check('demo walkthrough modal opened',              dm.length > 0);
-check('walkthrough headline present',               /A regulatory change just landed/.test(dm));
-check('walkthrough step 1 names AI Act',            /AI Act|Article 6/.test(dm));
-check('walkthrough step 3 mentions the policy',     /Responsible AI Use Policy/.test(dm));
-check('walkthrough opens viewer at \u00a73',        /openPolicyViewer\('pol-ai-use'.*s3/.test(dm));
-
-check('demo inserted exactly 1 new change',         DATA.changes.length === changesBefore + 1);
-check('new change is at top of the list',           DATA.changes[0].demo === true && DATA.changes[0].regId === 'reg-ai-act');
-check('AI Act lastChange updated',                  DATA.indexes.regulations['reg-ai-act'].lastChange !== aiActChangeBefore);
-check('C-AI-002 drift increased',                   DATA.indexes.controls['C-AI-002'].drift > ai002DriftBefore);
-check('new P1 risk created',                        DATA.risks.length === risksBefore + 1 && DATA.risks[DATA.risks.length - 1].severity === 'critical');
-check('new action targets pol-ai-use \u00a73',
-  DATA.actions.length === actionsBefore + 1 &&
-  DATA.actions[DATA.actions.length - 1].policyId === 'pol-ai-use' &&
-  DATA.actions[DATA.actions.length - 1].policySectionId === 's3');
-
-/* Running again must not double-apply. */
-try { Views.runDemoScenario(); } catch (e) {}
-check('second call is idempotent (no double change)', DATA.changes.length === changesBefore + 1);
-check('second call is idempotent (no double risk)',   DATA.risks.length === risksBefore + 1);
-
-/* Reset rolls everything back. */
-try { Views.resetDemoScenario(); } catch (e) {}
-check('reset restores changes length',              DATA.changes.length === changesBefore);
-check('reset restores risks length',                DATA.risks.length === risksBefore);
-check('reset restores actions length',              DATA.actions.length === actionsBefore);
-check('reset restores AI Act lastChange',           DATA.indexes.regulations['reg-ai-act'].lastChange === aiActChangeBefore);
-check('reset restores C-AI-002 drift',              DATA.indexes.controls['C-AI-002'].drift === ai002DriftBefore);
+console.log('\n[12] No demo-only surfaces leak into production');
+check('Views.runDemoScenario is NOT exposed',       typeof Views.runDemoScenario === 'undefined');
+check('Views.resetDemoScenario is NOT exposed',     typeof Views.resetDemoScenario === 'undefined');
 
 console.log('\nResult:  \x1b[32m' + ok + ' passed\x1b[0m, \x1b[31m' + fail + ' failed\x1b[0m');
 process.exit(fail === 0 ? 0 : 1);

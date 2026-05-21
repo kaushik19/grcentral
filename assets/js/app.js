@@ -126,9 +126,6 @@
     renderView();
   }
 
-  /* Expose for in-modal CTAs (e.g. demo walkthrough's "Go to Radar"). */
-  window.__navTo = navigate;
-
   /* ---- Event delegation -------------------------------------------------- */
 
   document.addEventListener('click', (e) => {
@@ -166,13 +163,6 @@
       }, 900);
     });
 
-    const runDemoBtn = document.getElementById('runDemo');
-    if (runDemoBtn) {
-      runDemoBtn.addEventListener('click', () => {
-        Views.runDemoScenario();
-        renderView();          /* re-render whatever's currently on screen */
-      });
-    }
 
     /* Global search → open modal with hits */
     document.getElementById('globalSearch').addEventListener('keydown', (e) => {
