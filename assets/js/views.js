@@ -772,7 +772,14 @@ DriftScore =<br/>
 
       ${activeBanner}
 
-      <div class="flex flex-wrap items-center gap-1.5 mb-4">${fwFilterChips}</div>
+      <div class="flex flex-wrap items-center gap-1.5 mb-4">
+        ${fwFilterChips}
+        ${filtered.length > 0
+          ? '<button class="btn btn-primary text-[11px] py-1 ml-auto" onclick="Views.generateActionsFromVisibleGaps()" title="Create one preventive action per gap currently shown">' +
+              '<i data-lucide="wand-2" class="w-3 h-3"></i> Generate preventive actions (' + filtered.length + ')' +
+            '</button>'
+          : ''}
+      </div>
 
       ${policyGroups.length === 0
         ? '<div class="gr-card p-8 text-center text-white/55"><i data-lucide="shield-check" class="w-8 h-8 mx-auto text-emerald-300 mb-2"></i><div class="font-semibold">No gaps in this view.</div></div>'
@@ -798,61 +805,179 @@ DriftScore =<br/>
   /*  6. PREVENTIVE ACTIONS                                                 */
   /* ====================================================================== */
   function actions() {
-    const cols = [
-      { key: 'planned',     label: 'Planned',     color: '#a78bfa' },
-      { key: 'in-progress', label: 'In progress', color: '#fbbf24' },
-      { key: 'done',        label: 'Done',        color: '#34d399' }
+    const filter = window.__actionFilter || { status: 'open', owner: 'all' };
+    window.__actionFilter = filter;
+
+    /* --- bucket actions by status (treating blocked as in-progress side-state) */
+    const all = DATA.actions.slice();
+    const visible = all.filter(function (a) {
+      if (filter.owner !== 'all' && a.ownerId !== filter.owner) return false;
+      if (filter.status === 'open')   return a.status !== 'done';
+      if (filter.status === 'done')   return a.status === 'done';
+      if (filter.status === 'review') return a.status === 'review';
+      if (filter.status === 'mine')   return a.ownerId === (window.AppState && window.AppState.currentPersonaId);
+      return true;
+    });
+
+    const nb = DATA.nextBestAction ? DATA.nextBestAction() : null;
+    const heroHtml = nb ? _actionHeroCard(nb) : '';
+    const ownerOpts = ['all'].concat(DATA.personas.map(function (p) { return p.id; }));
+
+    const groups = [
+      { key: 'planned',     label: 'Planned',     color: '#a78bfa', empty: 'Nothing planned -- the team has cleared its backlog.' },
+      { key: 'in-progress', label: 'In progress', color: '#fbbf24', empty: 'No work in flight.' },
+      { key: 'blocked',     label: 'Blocked',     color: '#fb7185', empty: 'No blocked actions. Healthy throughput.' },
+      { key: 'review',      label: 'Awaiting approval', color: '#22d3ee', empty: 'Nothing waiting on an approver.' },
+      { key: 'done',        label: 'Done',        color: '#34d399', empty: 'No closures yet.' }
     ];
+
+    /* totals for the KPI strip */
+    const open    = all.filter(function (a) { return a.status !== 'done'; });
+    const review  = all.filter(function (a) { return a.status === 'review'; });
+    const blocked = all.filter(function (a) { return a.status === 'blocked'; });
+    const closed  = all.filter(function (a) { return a.status === 'done'; });
+    const projDrop = open.reduce(function (s, a) { return s + (a.expectedDriftReduction || 0); }, 0);
+
     return `
-      <div class="flex items-end justify-between mb-6">
+      <div class="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
           <h2 class="text-2xl font-extrabold tracking-tight">Preventive Actions</h2>
-          <p class="text-sm text-white/55 mt-1">AI-suggested mitigations with owners, effort estimate and SLA</p>
+          <p class="text-sm text-white/55 mt-1">Each action carries the recipe to close a specific risk: steps, the evidence we need, and the drift it removes when approved.</p>
         </div>
-        <button class="btn btn-primary"><i data-lucide="plus" class="w-3 h-3"></i> New action</button>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select id="action-owner-filter"
+                  onchange="Views.setActionFilter('owner', this.value)"
+                  class="chip" style="cursor:pointer; padding-right: 1.5rem;">
+            ${ownerOpts.map(function (id) {
+              const label = id === 'all' ? 'All owners' : (DATA.indexes.personas[id] ? DATA.indexes.personas[id].name : id);
+              return '<option value="' + UI.htmlEscape(id) + '"' + (filter.owner === id ? ' selected' : '') + '>' + UI.htmlEscape(label) + '</option>';
+            }).join('')}
+          </select>
+          ${['open','review','done','mine','all'].map(function (k) {
+            const sel = filter.status === k;
+            return '<button class="chip ' + (sel ? 'chip-active' : '') + '" onclick="Views.setActionFilter(\'status\',\'' + k + '\')">' +
+                   { open: 'Open', review: 'In review', done: 'Done', mine: 'Mine', all: 'All' }[k] + '</button>';
+          }).join('')}
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        ${cols.map(col => {
-          const items = DATA.actions.filter(a => a.status === col.key);
+      <div class="grid grid-cols-12 gap-6 mb-6">
+        ${[
+          { lbl: 'Open actions',          value: open.length,    color: '#fbbf24', icon: 'list-todo' },
+          { lbl: 'Awaiting approval',     value: review.length,  color: '#22d3ee', icon: 'inbox' },
+          { lbl: 'Blocked',               value: blocked.length, color: '#fb7185', icon: 'hand' },
+          { lbl: 'Projected drift drop',  value: '-' + projDrop,  color: '#34d399', icon: 'trending-down' }
+        ].map(function (k) {
+          return '<div class="col-span-6 md:col-span-3">' + UI.kpiTile({ label: k.lbl, value: k.value, icon: k.icon, color: k.color }) + '</div>';
+        }).join('')}
+      </div>
+
+      ${heroHtml}
+
+      <div class="space-y-6 mt-6">
+        ${groups.map(function (g) {
+          const items = visible.filter(function (a) { return a.status === g.key; });
+          if (filter.status !== 'all' && items.length === 0) return '';
           return `
             <div class="gr-card p-5 fade-up">
               <div class="flex items-center justify-between mb-4">
                 <div class="font-bold text-sm flex items-center gap-2">
-                  <span class="h-2 w-2 rounded-full" style="background:${col.color}"></span>
-                  ${col.label}
+                  <span class="h-2 w-2 rounded-full" style="background:${g.color}"></span>
+                  ${g.label}
+                  <span class="chip" style="margin-left: 6px;">${items.length}</span>
                 </div>
-                <span class="chip">${items.length}</span>
               </div>
-              <div class="space-y-3">
-                ${items.map(a => {
-                  const owner = DATA.indexes.personas[a.ownerId];
-                  const risk = DATA.indexes.risks[a.riskId];
-                  const reg = risk ? DATA.indexes.regulations[risk.regId] : null;
-                  const overdue = a.dueInDays < 0;
-                  return `
-                    <div class="p-3 rounded-xl border border-white/5 bg-white/[0.015] hover:border-babcom-500/30 transition">
-                      <div class="text-sm font-semibold leading-snug">${a.title}</div>
-                      <div class="flex items-center gap-2 mt-2 flex-wrap">
-                        ${reg ? `<span class="chip" style="cursor:pointer" data-route="regulation/${reg.id}">${reg.shortTitle}</span>` : ''}
-                        ${risk ? UI.badgeSeverity(risk.severity) : ''}
-                        <span class="chip">${a.effort} effort</span>
-                        <span class="chip" style="background:${overdue ? 'rgba(251,113,133,0.15)' : 'rgba(255,255,255,0.05)'};color:${overdue ? '#fda4af' : 'inherit'}">${overdue ? `${Math.abs(a.dueInDays)}d overdue` : `${a.dueInDays}d`}</span>
-                      </div>
-                      <div class="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
-                        ${UI.avatar(owner)}
-                        <div class="text-[12px]">
-                          <div class="font-semibold">${owner.name}</div>
-                          <div class="text-white/40 text-[10px]">${owner.role}</div>
-                        </div>
-                      </div>
-                    </div>`;
-                }).join('') || `<div class="text-xs text-white/40">No items.</div>`}
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                ${items.map(function (a) { return _actionCard(a); }).join('') ||
+                  ('<div class="col-span-full text-xs text-white/40">' + g.empty + '</div>')}
               </div>
             </div>`;
         }).join('')}
       </div>
     `;
+  }
+
+  /* ------- "Next best action" hero card ---------------------------------- */
+  function _actionHeroCard(a) {
+    const owner = DATA.indexes.personas[a.ownerId];
+    const risk  = DATA.indexes.risks[a.riskId];
+    const reg   = risk ? DATA.indexes.regulations[risk.regId] : null;
+    const prog  = DATA.actionProgress(a);
+    const sev   = risk ? UI.badgeSeverity(risk.severity) : '';
+    return `
+      <div class="gr-card p-6 fade-up" style="background: linear-gradient(135deg, rgba(255,90,31,0.10), rgba(34,211,238,0.05));">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div class="text-[11px] uppercase tracking-widest text-babcom-300 font-bold">Next best action</div>
+          <div class="text-[11px] text-white/60">Highest expected impact for ${owner ? UI.htmlEscape(owner.name.split(' ')[0]) + "'s" : ''} queue</div>
+        </div>
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div class="flex-1 min-w-[260px]">
+            <div class="text-lg font-extrabold leading-snug">${UI.htmlEscape(a.title)}</div>
+            <div class="text-xs text-white/55 mt-2">${UI.htmlEscape(a.summary || '')}</div>
+            <div class="flex items-center gap-2 mt-3 flex-wrap">
+              ${reg ? '<span class="chip" style="cursor:pointer" onclick="App.navigate(\'regulation/' + reg.id + '\')">' + UI.htmlEscape(reg.shortTitle) + '</span>' : ''}
+              ${sev}
+              <span class="chip" style="background: rgba(52, 211, 153, 0.15); color: #6ee7b7;">-${a.expectedDriftReduction || 0} drift</span>
+              <span class="chip">${prog.stepsDone}/${prog.stepsTotal} steps · ${prog.evidenceDone}/${prog.evidenceTotal} evidence</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <button class="btn btn-primary" onclick="Views.openActionDetail('${a.id}')">
+              <i data-lucide="play" class="w-3 h-3"></i> ${a.status === 'planned' ? 'Start now' : 'Open'}
+            </button>
+            ${owner ? '<div class="text-[11px] text-white/50">Owner: ' + UI.htmlEscape(owner.name) + '</div>' : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ------- Compact card used in the status groups ------------------------ */
+  function _actionCard(a) {
+    const owner = DATA.indexes.personas[a.ownerId];
+    const risk  = DATA.indexes.risks[a.riskId];
+    const reg   = risk ? DATA.indexes.regulations[risk.regId] : null;
+    const prog  = DATA.actionProgress(a);
+    const overdue = (a.dueInDays || 0) < 0 && a.status !== 'done';
+    const sev   = risk ? UI.badgeSeverity(risk.severity) : '';
+    const pctBar = prog.percent;
+    return `
+      <button class="text-left p-4 rounded-xl border border-white/5 bg-white/[0.015] hover:border-babcom-500/40 transition w-full"
+              onclick="Views.openActionDetail('${a.id}')">
+        <div class="flex items-start justify-between gap-2">
+          <div class="text-sm font-semibold leading-snug">${UI.htmlEscape(a.title)}</div>
+          ${a.status === 'review' ? '<span class="chip" style="background: rgba(34,211,238,0.15); color: #67e8f9;">Review</span>' : ''}
+          ${a.status === 'blocked' ? '<span class="chip" style="background: rgba(251,113,133,0.18); color: #fda4af;">Blocked</span>' : ''}
+        </div>
+        ${risk ? '<div class="text-[11px] text-white/50 mt-1">Closes ' + UI.htmlEscape(risk.id) + ': ' + UI.htmlEscape(risk.title) + '</div>' : ''}
+        ${a.blockedReason ? '<div class="text-[11px] text-rose-300 mt-1">Blocked: ' + UI.htmlEscape(a.blockedReason) + '</div>' : ''}
+
+        <div class="mt-3">
+          <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+            <div style="width: ${pctBar}%; background: linear-gradient(90deg, #ff5a1f, #22d3ee); height: 100%; transition: width .3s ease;"></div>
+          </div>
+          <div class="flex items-center justify-between mt-1 text-[10px] text-white/45">
+            <span>${prog.stepsDone}/${prog.stepsTotal} steps · ${prog.evidenceDone}/${prog.evidenceTotal} evidence</span>
+            <span>${pctBar}%</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          ${reg ? '<span class="chip">' + UI.htmlEscape(reg.shortTitle) + '</span>' : ''}
+          ${sev}
+          <span class="chip" style="background: rgba(52, 211, 153, 0.15); color: #6ee7b7;">-${a.expectedDriftReduction || 0} drift</span>
+          <span class="chip" style="background:${overdue ? 'rgba(251,113,133,0.15)' : 'rgba(255,255,255,0.05)'};color:${overdue ? '#fda4af' : 'inherit'}">
+            ${overdue ? Math.abs(a.dueInDays) + 'd overdue' : (a.status === 'done' ? 'Closed' : (a.dueInDays || 0) + 'd left')}
+          </span>
+        </div>
+        ${owner ? '<div class="flex items-center gap-2 mt-3 pt-3 border-t border-white/5"><div class="text-[10px] text-white/40">Owner</div><div class="text-[11px] font-semibold">' + UI.htmlEscape(owner.name) + '</div></div>' : ''}
+      </button>`;
+  }
+
+  /* Filter helper bound to the window. */
+  function setActionFilter(key, value) {
+    if (!window.__actionFilter) window.__actionFilter = { status: 'open', owner: 'all' };
+    window.__actionFilter[key] = value;
+    App.render();
   }
 
   /* ====================================================================== */
@@ -2782,6 +2907,330 @@ DriftScore = (<br/>
     UI.openModal(html);
   }
 
+  /* ====================================================================== */
+  /*  ACTION DETAIL MODAL                                                   */
+  /* ====================================================================== */
+  function openActionDetail(actionId) {
+    var a = DATA.indexes.actions[actionId];
+    if (!a) return;
+    _renderActionDetail(a);
+  }
+
+  function _renderActionDetail(a) {
+    var owner    = DATA.indexes.personas[a.ownerId];
+    var approver = a.approverId ? DATA.indexes.personas[a.approverId] : null;
+    var risk     = DATA.indexes.risks[a.riskId];
+    var reg      = risk ? DATA.indexes.regulations[risk.regId] : null;
+    var prog     = DATA.actionProgress(a);
+
+    var statusBadge =
+      a.status === 'planned'     ? '<span class="chip" style="background: rgba(167, 139, 250, 0.15); color: #c4b5fd;">Planned</span>'
+    : a.status === 'in-progress' ? '<span class="chip" style="background: rgba(251, 191, 36, 0.15); color: #fcd34d;">In progress</span>'
+    : a.status === 'blocked'     ? '<span class="chip" style="background: rgba(251, 113, 133, 0.18); color: #fda4af;">Blocked</span>'
+    : a.status === 'review'      ? '<span class="chip" style="background: rgba(34, 211, 238, 0.18); color: #67e8f9;">Awaiting approval</span>'
+    : a.status === 'done'        ? '<span class="chip" style="background: rgba(52, 211, 153, 0.18); color: #6ee7b7;">Done</span>'
+    : '<span class="chip">' + UI.htmlEscape(a.status || '') + '</span>';
+
+    var stepsHtml = (a.steps || []).map(function (s) {
+      var disabled = (a.status === 'done' || a.status === 'review') ? 'disabled' : '';
+      return '<label class="flex items-start gap-3 py-2 border-b border-white/5 last:border-none' + (s.done ? ' opacity-70' : '') + '">' +
+               '<input type="checkbox" ' + (s.done ? 'checked ' : '') + disabled +
+                      ' onchange="Views.toggleActionStep(\'' + UI.htmlEscape(a.id) + '\',\'' + UI.htmlEscape(s.id) + '\')"' +
+                      ' class="mt-1 accent-orange-500" />' +
+               '<div class="flex-1 min-w-0">' +
+                 '<div class="text-[12.5px]' + (s.done ? ' line-through text-white/45' : '') + '">' + UI.htmlEscape(s.label) + '</div>' +
+                 (s.doneAt ? '<div class="text-[10.5px] text-emerald-300/80 mt-0.5">Completed ' + UI.htmlEscape(s.doneAt) + (s.doneBy ? ' by ' + UI.htmlEscape((DATA.indexes.personas[s.doneBy] || {}).name || s.doneBy) : '') + '</div>' : '') +
+               '</div>' +
+             '</label>';
+    }).join('');
+
+    var evidenceHtml = (a.evidenceRequirements || []).map(function (r) {
+      return _renderEvidenceRequirement(a, r);
+    }).join('');
+
+    var historyHtml = (a.history || []).slice().reverse().map(function (h) {
+      var who = (DATA.indexes.personas[h.who] || {}).name || h.who;
+      return '<div class="flex items-start gap-3 py-2 border-b border-white/5 last:border-none">' +
+               '<span class="h-1.5 w-1.5 rounded-full mt-2 flex-shrink-0" style="background:#22d3ee"></span>' +
+               '<div class="flex-1 min-w-0">' +
+                 '<div class="text-[12px]"><span class="font-semibold">' + UI.htmlEscape(who) + '</span> ' + UI.htmlEscape(h.what) + '</div>' +
+                 '<div class="text-[10.5px] text-white/40">' + UI.htmlEscape(h.at) + '</div>' +
+               '</div>' +
+             '</div>';
+    }).join('') || '<div class="text-[11px] text-white/40">No history yet.</div>';
+
+    /* ---- Action buttons in the footer (status-aware) ---- */
+    var footerBtns = [];
+    if (a.status === 'planned') {
+      footerBtns.push('<button class="btn btn-primary text-xs" onclick="Views.startAction(\'' + UI.htmlEscape(a.id) + '\')"><i data-lucide="play" class="w-3.5 h-3.5"></i> Start</button>');
+    }
+    if (a.status === 'in-progress') {
+      var submitDisabled = !prog.complete;
+      footerBtns.push(
+        '<button class="btn btn-primary text-xs" ' + (submitDisabled ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : '') +
+        ' onclick="Views.submitActionForReview(\'' + UI.htmlEscape(a.id) + '\')" ' +
+        'title="' + (submitDisabled ? 'Finish all steps and evidence first' : 'Send to ' + UI.htmlEscape((approver && approver.name) || 'approver')) + '">' +
+        '<i data-lucide="send" class="w-3.5 h-3.5"></i> Submit for review' + (submitDisabled ? ' (' + (prog.stepsTotal + prog.evidenceTotal - prog.stepsDone - prog.evidenceDone) + ' to go)' : '') +
+        '</button>'
+      );
+      footerBtns.push('<button class="btn btn-ghost text-xs" onclick="Views.promptBlockAction(\'' + UI.htmlEscape(a.id) + '\')"><i data-lucide="hand" class="w-3.5 h-3.5"></i> Mark blocked</button>');
+    }
+    if (a.status === 'blocked') {
+      footerBtns.push('<button class="btn btn-primary text-xs" onclick="Views.unblockAction(\'' + UI.htmlEscape(a.id) + '\')"><i data-lucide="play" class="w-3.5 h-3.5"></i> Resume</button>');
+    }
+    if (a.status === 'review') {
+      footerBtns.push(
+        '<button class="btn btn-primary text-xs" onclick="Views.approveAction(\'' + UI.htmlEscape(a.id) + '\')">' +
+        '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Approve & close risk' +
+        '</button>'
+      );
+    }
+    footerBtns.push('<button class="btn btn-ghost text-xs ml-auto" onclick="UI.closeModal()">Close</button>');
+
+    var html = [
+      '<div class="flex items-start justify-between mb-4 gap-3">',
+        '<div class="min-w-0 flex-1">',
+          '<div class="flex items-center gap-2 mb-2 flex-wrap">',
+            '<div class="text-[10px] uppercase tracking-[0.3em] text-white/40">Preventive action</div>',
+            statusBadge,
+            risk ? UI.badgeSeverity(risk.severity) : '',
+            '<span class="chip" style="background: rgba(52, 211, 153, 0.15); color: #6ee7b7;">-' + (a.expectedDriftReduction || 0) + ' drift on approval</span>',
+          '</div>',
+          '<h3 class="text-xl font-extrabold tracking-tight">' + UI.htmlEscape(a.title) + '</h3>',
+          a.summary ? '<p class="text-xs text-white/55 mt-1">' + UI.htmlEscape(a.summary) + '</p>' : '',
+          risk
+            ? '<div class="text-[11.5px] text-white/65 mt-2"><span class="text-white/45">Closes risk: </span><span class="font-mono">' + UI.htmlEscape(risk.id) + '</span> -- ' + UI.htmlEscape(risk.title) + (reg ? ' <span class="chip ml-2" style="cursor:pointer" onclick="App.navigate(\'regulation/' + UI.htmlEscape(reg.id) + '\')">' + UI.htmlEscape(reg.shortTitle) + '</span>' : '') + '</div>'
+            : '',
+          a.blockedReason ? '<div class="text-[11.5px] text-rose-300 mt-2">Blocked: ' + UI.htmlEscape(a.blockedReason) + '</div>' : '',
+        '</div>',
+        '<button onclick="UI.closeModal()" class="text-white/40 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>',
+      '</div>',
+
+      /* Progress strip */
+      '<div class="mb-5">',
+        '<div class="flex items-center justify-between text-[11px] text-white/55 mb-1">',
+          '<span>' + prog.stepsDone + '/' + prog.stepsTotal + ' steps · ' + prog.evidenceDone + '/' + prog.evidenceTotal + ' evidence</span>',
+          '<span>' + prog.percent + '% ready' + (prog.complete && a.status !== 'review' && a.status !== 'done' ? ' -- ready to submit' : '') + '</span>',
+        '</div>',
+        '<div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">',
+          '<div style="width: ' + prog.percent + '%; background: linear-gradient(90deg, #ff5a1f, #22d3ee); height: 100%; transition: width .3s ease;"></div>',
+        '</div>',
+      '</div>',
+
+      '<div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[60vh] overflow-y-auto pr-1">',
+
+        /* LEFT: steps + history */
+        '<div>',
+          '<div class="gr-card p-4 mb-4">',
+            '<div class="text-[10px] uppercase tracking-widest text-white/40 mb-2">Steps</div>',
+            stepsHtml || '<div class="text-[11px] text-white/40">No steps captured.</div>',
+          '</div>',
+          '<div class="gr-card p-4">',
+            '<div class="text-[10px] uppercase tracking-widest text-white/40 mb-2">History</div>',
+            historyHtml,
+          '</div>',
+        '</div>',
+
+        /* RIGHT: evidence + meta */
+        '<div>',
+          '<div class="gr-card p-4 mb-4">',
+            '<div class="text-[10px] uppercase tracking-widest text-white/40 mb-2">Required evidence</div>',
+            evidenceHtml || '<div class="text-[11px] text-white/40">No evidence requirements.</div>',
+          '</div>',
+          '<div class="gr-card p-4">',
+            '<div class="text-[10px] uppercase tracking-widest text-white/40 mb-2">Assignment</div>',
+            '<div class="text-[12px]"><span class="text-white/45">Owner:</span> ' + UI.htmlEscape((owner && owner.name) || a.ownerId) + (owner ? ' <span class="text-white/40">(' + UI.htmlEscape(owner.role) + ')</span>' : '') + '</div>',
+            '<div class="text-[12px] mt-1"><span class="text-white/45">Approver:</span> ' + UI.htmlEscape((approver && approver.name) || a.approverId || 'unassigned') + (approver ? ' <span class="text-white/40">(' + UI.htmlEscape(approver.role) + ')</span>' : '') + '</div>',
+            '<div class="text-[12px] mt-1"><span class="text-white/45">Effort:</span> ' + UI.htmlEscape(a.effort || '') + '</div>',
+            '<div class="text-[12px] mt-1"><span class="text-white/45">Due:</span> ' + ((a.dueInDays || 0) < 0 ? Math.abs(a.dueInDays) + 'd overdue' : (a.dueInDays || 0) + 'd left') + '</div>',
+          '</div>',
+        '</div>',
+
+      '</div>',
+
+      '<div class="mt-5 pt-4 border-t border-white/5 flex items-center gap-2 flex-wrap">',
+        footerBtns.join(''),
+      '</div>'
+    ].join('');
+
+    UI.openModal(html);
+  }
+
+  /* ---- Evidence-requirement renderer (one per req) -------------------- */
+  function _renderEvidenceRequirement(a, r) {
+    var fulfilled = !!r.fulfilled;
+    var icon = r.kind === 'document'       ? 'file-up'
+             : r.kind === 'policy-section' ? 'link-2'
+             : r.kind === 'link'           ? 'external-link'
+             : 'pen-line';
+    var kindLbl = r.kind === 'document' ? 'Document' : r.kind === 'policy-section' ? 'Policy section' : r.kind === 'link' ? 'External link' : 'Confirmation';
+    var locked = (a.status === 'done' || a.status === 'review');
+
+    var payloadHtml = '';
+    if (fulfilled && r.payload) {
+      if (r.kind === 'link') {
+        payloadHtml = '<div class="text-[11px] text-emerald-300/80 mt-1 truncate">' + UI.htmlEscape(r.payload.url || '') + '</div>';
+      } else if (r.kind === 'policy-section') {
+        var pol = r.payload.policyId ? DATA.getPolicyById(r.payload.policyId) : null;
+        payloadHtml = '<div class="text-[11px] text-emerald-300/80 mt-1">Linked: ' + UI.htmlEscape((pol && pol.title) || r.payload.policyId || '') + (r.payload.sectionTitle ? ' (' + UI.htmlEscape(r.payload.sectionTitle) + ')' : '') + '</div>';
+      } else if (r.kind === 'confirmation') {
+        payloadHtml = '<div class="text-[11px] text-emerald-300/80 mt-1 italic">"' + UI.htmlEscape(r.payload.text || '') + '"</div>';
+      } else if (r.kind === 'document') {
+        payloadHtml = '<div class="text-[11px] text-emerald-300/80 mt-1">' + UI.htmlEscape(r.payload.fileName || 'file attached') + '</div>';
+      }
+    }
+
+    /* Inline attach widget (only when not locked + not yet fulfilled) */
+    var attachWidget = '';
+    if (!locked && !fulfilled) {
+      if (r.kind === 'link') {
+        attachWidget =
+          '<div class="flex gap-2 mt-2">' +
+            '<input id="ev-input-' + UI.htmlEscape(r.id) + '" type="url" placeholder="https://..." class="flex-1 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-[12px]" />' +
+            '<button class="btn btn-ghost text-[11px] py-1" onclick="Views.attachActionEvidenceLink(\'' + UI.htmlEscape(a.id) + '\',\'' + UI.htmlEscape(r.id) + '\')">Save link</button>' +
+          '</div>';
+      } else if (r.kind === 'confirmation') {
+        attachWidget =
+          '<div class="flex gap-2 mt-2">' +
+            '<input id="ev-input-' + UI.htmlEscape(r.id) + '" type="text" placeholder="Type a few words attesting this is done..." class="flex-1 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-[12px]" />' +
+            '<button class="btn btn-ghost text-[11px] py-1" onclick="Views.attachActionEvidenceConfirmation(\'' + UI.htmlEscape(a.id) + '\',\'' + UI.htmlEscape(r.id) + '\')">Attest</button>' +
+          '</div>';
+      } else if (r.kind === 'document') {
+        attachWidget =
+          '<div class="flex gap-2 mt-2 items-center">' +
+            '<input id="ev-input-' + UI.htmlEscape(r.id) + '" type="file" class="text-[11px]" onchange="Views.attachActionEvidenceFile(\'' + UI.htmlEscape(a.id) + '\',\'' + UI.htmlEscape(r.id) + '\', this)" />' +
+          '</div>';
+      } else if (r.kind === 'policy-section') {
+        var pols = DATA.getAllPolicies();
+        attachWidget =
+          '<div class="flex gap-2 mt-2">' +
+            '<select id="ev-input-' + UI.htmlEscape(r.id) + '" class="flex-1 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-[12px]">' +
+              '<option value="">-- pick a policy --</option>' +
+              pols.map(function (p) { return '<option value="' + UI.htmlEscape(p.id) + '">' + UI.htmlEscape(p.title) + '</option>'; }).join('') +
+            '</select>' +
+            '<button class="btn btn-ghost text-[11px] py-1" onclick="Views.attachActionEvidencePolicy(\'' + UI.htmlEscape(a.id) + '\',\'' + UI.htmlEscape(r.id) + '\')">Link</button>' +
+          '</div>';
+      }
+    }
+
+    return '<div class="py-2 border-b border-white/5 last:border-none">' +
+             '<div class="flex items-start gap-2">' +
+               '<i data-lucide="' + icon + '" class="w-3.5 h-3.5 mt-0.5 ' + (fulfilled ? 'text-emerald-400' : 'text-white/45') + '"></i>' +
+               '<div class="flex-1 min-w-0">' +
+                 '<div class="text-[12px] ' + (fulfilled ? 'line-through text-white/45' : '') + '">' + UI.htmlEscape(r.label) + '</div>' +
+                 '<div class="text-[10px] uppercase tracking-widest text-white/35">' + UI.htmlEscape(kindLbl) + (fulfilled ? ' · attached' : '') + '</div>' +
+                 payloadHtml +
+                 attachWidget +
+               '</div>' +
+             '</div>' +
+           '</div>';
+  }
+
+  /* ---- Action lifecycle handlers (UI -> DATA -> UI feedback) ----------- */
+  function _refreshActionDetail(actionId, msg, sub) {
+    var a = DATA.indexes.actions[actionId];
+    if (msg) UI.toast({ title: msg, body: sub || '' });
+    if (a) _renderActionDetail(a);
+    App.render();
+  }
+
+  function startAction(actionId) {
+    var who = window.AppState && window.AppState.currentPersonaId;
+    var r = DATA.startAction(actionId, who);
+    if (!r.ok) { UI.toast({ title: 'Could not start', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Action started', r.action.title);
+  }
+  function toggleActionStep(actionId, stepId) {
+    var who = window.AppState && window.AppState.currentPersonaId;
+    var r = DATA.toggleActionStep(actionId, stepId, who);
+    if (!r.ok) { UI.toast({ title: 'Could not update', body: r.error }); return; }
+    _refreshActionDetail(actionId);
+  }
+  function attachActionEvidenceLink(actionId, reqId) {
+    var input = document.getElementById('ev-input-' + reqId);
+    var url = input ? input.value : '';
+    var r = DATA.attachActionEvidence(actionId, reqId, { url: url }, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not attach', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Evidence attached');
+  }
+  function attachActionEvidenceConfirmation(actionId, reqId) {
+    var input = document.getElementById('ev-input-' + reqId);
+    var text = input ? input.value : '';
+    var r = DATA.attachActionEvidence(actionId, reqId, { text: text }, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not attest', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Attestation captured');
+  }
+  function attachActionEvidencePolicy(actionId, reqId) {
+    var input = document.getElementById('ev-input-' + reqId);
+    var pid = input ? input.value : '';
+    if (!pid) { UI.toast({ title: 'Pick a policy first' }); return; }
+    var pol = DATA.getPolicyById(pid);
+    var r = DATA.attachActionEvidence(actionId, reqId, { policyId: pid, sectionTitle: pol ? pol.title : '' }, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not link', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Policy linked');
+  }
+  function attachActionEvidenceFile(actionId, reqId, fileInput) {
+    var f = fileInput && fileInput.files && fileInput.files[0];
+    if (!f) return;
+    var payload = { fileName: f.name, fileSize: f.size };
+    var r = DATA.attachActionEvidence(actionId, reqId, payload, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not attach', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'File attached', f.name);
+  }
+  function promptBlockAction(actionId) {
+    var reason = window.prompt && window.prompt('What is blocking this action?');
+    if (!reason) return;
+    var r = DATA.markActionBlocked(actionId, reason, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not block', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Marked as blocked');
+  }
+  function unblockAction(actionId) {
+    var r = DATA.unblockAction(actionId, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not resume', body: r.error }); return; }
+    _refreshActionDetail(actionId, 'Action resumed');
+  }
+  function submitActionForReview(actionId) {
+    var r = DATA.submitActionForReview(actionId, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Cannot submit', body: r.error }); return; }
+    var a = r.action;
+    var approver = a.approverId ? DATA.indexes.personas[a.approverId] : null;
+    _refreshActionDetail(actionId, 'Submitted for review', approver ? ('Sent to ' + approver.name) : '');
+  }
+  function approveAction(actionId) {
+    var r = DATA.approveAction(actionId, window.AppState && window.AppState.currentPersonaId);
+    if (!r.ok) { UI.toast({ title: 'Could not approve', body: r.error }); return; }
+    var riskTxt = r.risk ? (r.risk.id + ' closed') : 'Action closed';
+    var driftTxt = r.driftDropped ? ('Enterprise drift -' + r.driftDropped) : '';
+    UI.toast({ title: 'Approved', body: riskTxt + (driftTxt ? ' · ' + driftTxt : '') });
+    UI.closeModal();
+    App.render();
+  }
+
+  /* ---- Bulk-generate from gaps (called from Compliance Gaps page) ----- */
+  function generateActionsFromVisibleGaps() {
+    var visible = _currentlyVisibleGapRisks();
+    var ids = visible.map(function (r) { return r.id; });
+    var res = DATA.generateActionsFromRisks(ids);
+    var n = (res.created || []).length;
+    if (n === 0) {
+      UI.toast({ title: 'No actions to create', body: 'Every visible gap already has a preventive action.' });
+      return;
+    }
+    UI.toast({ title: n + ' preventive action' + (n === 1 ? '' : 's') + ' created', body: 'Open the Preventive Actions page to start.' });
+    App.render();
+  }
+
+  function _currentlyVisibleGapRisks() {
+    var filter = window.__gapsFilter || {};
+    return DATA.risks.filter(function (r) {
+      if (r.status === 'closed') return false;
+      if (filter.policyId && r.policyId !== filter.policyId) return false;
+      if (filter.regId    && r.regId    !== filter.regId)    return false;
+      if (filter.severity && r.severity !== filter.severity) return false;
+      return true;
+    });
+  }
+
   function openPolicyViewer(policyId, opts) {
     opts = opts || {};
     _revokeViewerBlobs();
@@ -3025,6 +3474,20 @@ DriftScore = (<br/>
     deletePolicy:          deletePolicy,
     /* ---------- Compliance Gaps filters ---------- */
     setGapsFilter:         setGapsFilter,
-    clearGapsFilter:       clearGapsFilter
+    clearGapsFilter:       clearGapsFilter,
+    generateActionsFromVisibleGaps: generateActionsFromVisibleGaps,
+    /* ---------- Preventive Actions ---------- */
+    setActionFilter:               setActionFilter,
+    openActionDetail:              openActionDetail,
+    startAction:                   startAction,
+    toggleActionStep:              toggleActionStep,
+    attachActionEvidenceLink:      attachActionEvidenceLink,
+    attachActionEvidenceConfirmation: attachActionEvidenceConfirmation,
+    attachActionEvidencePolicy:    attachActionEvidencePolicy,
+    attachActionEvidenceFile:      attachActionEvidenceFile,
+    promptBlockAction:             promptBlockAction,
+    unblockAction:                 unblockAction,
+    submitActionForReview:         submitActionForReview,
+    approveAction:                 approveAction
   };
 })();

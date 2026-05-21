@@ -117,7 +117,7 @@ primary, Montserrat 300–900, subtle radial glow, glass-card surfaces.
 | `regulation/{id}`      | Regulation Detail     | CELEX / ELI metadata, **article-level diff** vs previous snapshot, drift breakdown |
 | `drift`                | Risk Drift            | 90-day per-regulation trend, formula card, per-component breakdown table            |
 | `gaps`                 | Compliance Gaps       | Risks grouped **by policy** with **Framework** and **Framework control** columns; per-framework filter chips; "Coverage" CTA per group |
-| `actions`              | Preventive Actions    | Kanban (Planned / In progress / Done) with owners and effort                        |
+| `actions`              | Preventive Actions    | **Next-best-action hero** (highest expected drift drop), KPI strip, status groups (Planned / In progress / Blocked / Awaiting approval / Done), each card shows the risk it closes, a progress bar (steps + evidence), expected drift reduction, severity, due date. Click a card to open the **action detail modal** -- a checklist of steps, an evidence-requirement panel (attach files / URLs / policy sections / typed attestations), a history timeline and **status-aware buttons** (Start, Submit for review, Approve & close risk, Mark blocked, Resume). On **Approve** the workflow actually executes: the linked risk is closed, the linked control's drift drops by `expectedDriftReduction`, a row lands in the Evidence Vault and a "Risk closed" event is pushed to the Live activity feed |
 | `controls`             | Controls              | **Framework controls** (clauses of every regulation) grouped by framework with cross-policy coverage, **plus** operational controls library with **Linked policy** chip per card |
 | `policies`             | Internal Policies     | 6 seeded policies + **Upload policy** flow (PDF/MD/HTML/TXT). Uploads land on **Vercel Blob** when `BLOB_READ_WRITE_TOKEN` is set (4 MB cap, visible to every visitor) or fall back to `localStorage` (3 MB, this browser only); a banner tells you which mode is live |
 | `evidence`             | Evidence Vault        | Audit trail with **Policy + Framework control + Section / snippet** columns; auto-derived from compliant scans; feeds the Evidence-Aging factor |
@@ -491,6 +491,61 @@ button that opens a focused per-policy coverage modal, and the Evidence
 Vault renders the new **Policy / Framework control / Section / snippet**
 columns so auditors can read the proof in place.
 
+### Preventive Actions: a workflow, not a Kanban
+
+Each preventive action is a **workflow object that closes a specific risk**.
+The recipe lives in the action itself:
+
+```
+A-2003 · Enable LUKS at rest + re-key legacy KYC datastore (P1)
+├─ closes:    R-003 (GDPR Art. 32 -- encryption at rest)
+├─ owner:     Vikram Singh
+├─ approver:  Aarav Mehta            // separation of duties
+├─ steps[]                            // checklist
+│   ├─ [x] Cut a maintenance window with KYC ops
+│   ├─ [x] Enable LUKS on the legacy volume
+│   ├─ [ ] Rotate the keys via KMS (yearly rotation enforced)
+│   └─ [ ] Update the Encryption Standard policy section
+├─ evidenceRequirements[]             // what proves it's done
+│   ├─ document       "KMS rotation audit log (PDF or CSV)"
+│   └─ policy-section "Link Encryption Standard §3 (Encryption at rest)"
+├─ expectedDriftReduction: 18        // points dropped from the gauge on approval
+└─ history[]                          // append-only audit log
+```
+
+**Status state machine** (with a `blocked` side-channel):
+
+```
+   planned ──► in-progress ──► review ──► done
+                   │             ▲
+                   └── blocked ──┘    (unblock returns to in-progress)
+```
+
+**Submit-for-review** is gated: every step must be checked **and** every
+evidence requirement fulfilled. Once submitted, only the assigned
+**approver** can approve -- this is the closing transaction:
+
+1. The linked risk flips to `status: 'closed'` and disappears from open-risk counts.
+2. The linked control's drift drops by `expectedDriftReduction` (and maturity ticks up by half of that).
+3. One row per fulfilled evidence requirement lands in the Evidence Vault, tagged with the action id.
+4. `DATA.onActionApproved` fires. `app.js` listens and pushes a "Risk closed" event into the Live activity feed; a toast confirms the closure.
+
+The Actions page leads with a **"Next best action"** hero ranked by
+`expectedDriftReduction × severityWeight` so the user always knows what
+to do first. Cards show a real progress bar and an explicit `-N drift`
+pill, so the impact of closing the action is visible *before* you open
+it.
+
+The detail modal renders **status-aware buttons**: a planned action shows
+**Start**, an in-progress one shows **Submit for review** (disabled with
+a "N to go" hint when incomplete) plus **Mark blocked**, a blocked one
+shows **Resume**, an in-review one shows **Approve & close risk**.
+
+**Bulk create from Compliance Gaps**: the Gaps page exposes a `Generate
+preventive actions (N)` button. It walks every visible risk that doesn't
+already have an action and creates one with steps pre-populated from the
+framework control's title.
+
 ### Link a policy from Controls
 
 **Controls → any card → Link policy / Change**. Opens a reusable picker
@@ -520,6 +575,17 @@ Explicit user choices are persisted to `localStorage` under
 | `DATA.allFrameworkControls()`                  | Flat list across every framework                              |
 | `DATA.scanPolicyCompliance(policy)`            | Section-by-section coverage scan → `{ byFramework, summary, evidenceItems }` |
 | `DATA.applyComplianceGaps(policyId, scan)`     | Opens a `Risk` for every `missing` / `partial` framework control and an `Evidence` entry for every `compliant` one |
+| `DATA.actionProgress(action)`                  | `{ stepsDone, stepsTotal, evidenceDone, evidenceTotal, percent, complete }` -- drives the progress bar on every Action card and the modal |
+| `DATA.nextBestAction()`                        | Picks the open action with the highest `expectedDriftReduction × severityWeight` -- powers the "Next best action" hero |
+| `DATA.startAction(id, who)`                    | `planned` → `in-progress`; appends history                   |
+| `DATA.toggleActionStep(id, stepId, who)`       | Flips a checklist item; auto-starts a `planned` action       |
+| `DATA.attachActionEvidence(id, reqId, payload, who)` | Marks an evidence requirement fulfilled. `payload` shape depends on `kind`: `document` (`{fileName,fileSize}`), `policy-section` (`{policyId,sectionTitle}`), `link` (`{url}` -- only http(s)), `confirmation` (`{text}`, ≥3 chars) |
+| `DATA.markActionBlocked(id, reason, who)`      | Side-state with a captured reason                            |
+| `DATA.unblockAction(id, who)`                  | `blocked` → `in-progress`                                    |
+| `DATA.submitActionForReview(id, who)`          | Refuses unless all steps **and** all evidence are complete. `in-progress` → `review` |
+| `DATA.approveAction(id, who)`                  | The big one. `review` → `done`. Closes the linked risk (`status: closed`), drops the linked control's drift by `expectedDriftReduction`, writes one Evidence Vault row per fulfilled requirement, and notifies subscribers via `onActionApproved` |
+| `DATA.generateActionsFromRisks(riskIds[])`     | Bulk-create. One pre-populated action per open risk that lacks one. Steps are seeded with the framework control name; evidence requirements default to a document + a policy-section link |
+| `DATA.onActionApproved(fn)`                    | Subscribe to closure events. `app.js` uses it to push a "Risk closed" row into the Live activity feed |
 | `DATA.MAX_POLICY_FILE_BYTES`                   | `3 * 1024 * 1024`: the in-browser cap                        |
 
 ### Security posture of the upload flow
@@ -632,7 +698,7 @@ detected in the last 60 seconds.
 
 ## 9. Tests
 
-The repo ships with six pure-Node test suites. Run them all with:
+The repo ships with eight pure-Node test suites. Run them all with:
 
 ```bash
 npm test
@@ -648,9 +714,11 @@ Or individually:
 | `node .tests/security-check.js`      | Security & XSS         | `htmlEscape` / `safeUrl`, OWASP XSS payloads, `rel="noopener noreferrer"`, CSP + Vercel headers |
 | `node .tests/policies-check.js`      | Policies + viewer + analyzer | Seeded data, `addUserPolicy` validation, link/unlink, render of policies + upload modal + picker, **viewer (PDF / Markdown / sections / highlight)**, **`analyzePolicy` heuristics + `applyPolicyFindings` opens risks + bumps control drift**, clickable KPI tiles, XSS round |
 | `node .tests/live-check.js`          | Real-time engine       | Module surface, formatters, log seeding, deterministic ticks, hot-event injection into `DATA.changes`, DOM sweep, Radar **NEW** chip on fresh items |
+| `node .tests/cloud-check.js`         | Server-storage         | Client adapter (ping, upload, delete), DATA hydration, deterministic compliance re-derive, server handlers (GET/POST/DELETE) against a stubbed `@vercel/blob`, validation + error codes, 503 fallback |
+| `node .tests/actions-check.js`       | Preventive-Action workflow | Enriched Action schema (steps + evidence reqs + expectedDriftReduction + approver + history), `actionProgress`, `nextBestAction` ranking, lifecycle transitions (start / toggleStep / attach evidence by all 4 kinds / block / unblock / submit / approve), **approveAction side-effects** (risk closed, control drift dropped, Evidence Vault rows written, `onActionApproved` hook), `generateActionsFromRisks` bulk-create, render of the redesigned Actions page + status-aware detail modal, Compliance Gaps bulk-generate CTA |
 | `node .tests/http-check.js`          | HTTP smoke             | Every asset 200s with the right MIME, 404 path returns 404, CSP carries `frame-src 'self' blob:`, index ships `id="live-clock"` |
 
-Current state: **414 / 414 offline tests passing** (e2e 30 + ux 28 + verifier 19 + security 45 + policies 184 + live 46 + cloud 62 = 414), plus 12 HTTP smoke checks when the dev server is running.
+Current state: **505 / 505 offline tests passing** (e2e 30 + ux 28 + verifier 19 + security 45 + policies 184 + live 46 + cloud 62 + actions 91 = 505), plus 12 HTTP smoke checks when the dev server is running.
 
 `.tests/cloud-check.js` exercises both halves of the server-storage feature:
 the in-browser `CloudPolicies` adapter (feature detection, single-flight

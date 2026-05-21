@@ -7,7 +7,7 @@
   "scripts": {
     "dev":          "node .tests/server.js",
     "start":        "node .tests/server.js",
-    "test":         "node .tests/e2e.js && node .tests/ux-check.js && node .tests/verifier-check.js && node .tests/security-check.js && node .tests/policies-check.js && node .tests/live-check.js && node .tests/cloud-check.js",
+    "test":         "node .tests/e2e.js && node .tests/ux-check.js && node .tests/verifier-check.js && node .tests/security-check.js && node .tests/policies-check.js && node .tests/live-check.js && node .tests/cloud-check.js && node .tests/actions-check.js",
     "test:http":    "node .tests/http-check.js"
   },
   "dependencies": {

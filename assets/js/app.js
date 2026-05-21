@@ -126,6 +126,17 @@
     renderView();
   }
 
+  /* Expose a minimal facade so view-layer code (modals, lifecycle callbacks)
+     can navigate / re-render without grabbing internal state directly. */
+  window.App = {
+    navigate: navigate,
+    render:   renderView
+  };
+  window.AppState = {
+    get currentPersonaId() { return state.persona && state.persona.id; },
+    get currentRoute()     { return state.route; }
+  };
+
   /* ---- Event delegation -------------------------------------------------- */
 
   document.addEventListener('click', (e) => {
@@ -163,6 +174,21 @@
         if (r === 'dashboard' || r === 'radar' || r === 'drift' || r === ('regulation/' + ev.regId)) {
           renderView();
         }
+      });
+    }
+
+    /* When a preventive action is approved: push a synthetic event into the
+       live feed so the activity tile reflects the closure in real time. */
+    if (window.DATA && DATA.onActionApproved && window.Live && Live.injectEvent) {
+      DATA.onActionApproved((payload) => {
+        const r   = payload.risk;
+        const sev = (r && r.severity) || 'medium';
+        Live.injectEvent({
+          srcId:  'system',
+          label:  'Risk closed via Preventive Action',
+          detail: payload.action.id + ' approved -- closed ' + (r ? r.id : 'risk') + (payload.driftDropped ? ' (-' + payload.driftDropped + ' drift)' : ''),
+          tone:   sev === 'critical' || sev === 'high' ? 'good' : 'soft'
+        });
       });
     }
 

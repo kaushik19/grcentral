@@ -366,18 +366,186 @@ window.DATA = (() => {
     { id: 'EV-110', controlId: 'C-LR-050', name: 'CloudWatch retention attestation',       collectedAt: '2026-04-26', expiresInDays: 5,   source: 'AWS Config' }
   ];
 
-  /* ----------------------------- Actions ---------------------------------- */
+  /* ----------------------------- Actions ----------------------------------
+     Each Preventive Action is a workflow object that closes a specific risk.
+     It carries:
+       * steps[]                : ordered checklist (toggleable at runtime)
+       * evidenceRequirements[] : artifacts that prove it's actually done
+                                    kinds: document (upload file), policy-section
+                                    (link a policy + section), link (external URL),
+                                    confirmation (typed attestation)
+       * expectedDriftReduction : numeric estimate (drift points) that the
+                                    closing of the linked risk will remove
+                                    from the enterprise gauge -- drives the
+                                    "Next best action" ranking
+       * approverId             : separation of duties: owner != approver
+       * status                 : planned -> in-progress -> review -> done
+                                  (with a side-channel `blocked` state)
+       * history[]              : append-only audit log of state transitions */
   const actions = [
-    { id: 'A-2001', riskId: 'R-001', title: 'Stand up GPAI documentation register and back-fill internal LLM',      ownerId: 'priya',  dueInDays: 7,  status: 'in-progress', effort: 'L' },
-    { id: 'A-2002', riskId: 'R-002', title: 'Implement data lineage capture for fraud-detection training pipeline', ownerId: 'priya',  dueInDays: 14, status: 'planned',     effort: 'M' },
-    { id: 'A-2003', riskId: 'R-003', title: 'Enable LUKS at rest + re-key legacy KYC datastore (P1)',               ownerId: 'vikram', dueInDays: 3,  status: 'in-progress', effort: 'M' },
-    { id: 'A-2004', riskId: 'R-004', title: 'Enforce mTLS on remaining services in mesh (Istio policy)',            ownerId: 'vikram', dueInDays: 10, status: 'in-progress', effort: 'M' },
-    { id: 'A-2005', riskId: 'R-005', title: 'Tune incident triage runbook to hit 4-hour SLA (DORA Art. 17)',         ownerId: 'vikram', dueInDays: 5,  status: 'in-progress', effort: 'S' },
-    { id: 'A-2006', riskId: 'R-006', title: 'Re-collect subprocessor chain from top-25 SaaS vendors',                ownerId: 'rohan',  dueInDays: 21, status: 'planned',     effort: 'L' },
-    { id: 'A-2007', riskId: 'R-007', title: 'Roll out SBOM scanner across CI for all container images',             ownerId: 'vikram', dueInDays: 30, status: 'planned',     effort: 'L' },
-    { id: 'A-2008', riskId: 'R-008', title: 'Run DPIA for credit-scoring AI (model card + bias eval)',              ownerId: 'ananya', dueInDays: 12, status: 'in-progress', effort: 'M' },
-    { id: 'A-2009', riskId: 'R-009', title: 'Raise CloudWatch retention to 180 days on prod-eu-1 cluster',          ownerId: 'vikram', dueInDays: 6,  status: 'planned',     effort: 'S' },
-    { id: 'A-2010', riskId: 'R-010', title: 'Add 5 new CDP processing activities to RoPA',                          ownerId: 'ananya', dueInDays: 14, status: 'planned',     effort: 'S' }
+    {
+      id: 'A-2001', riskId: 'R-001', title: 'Stand up GPAI documentation register and back-fill internal LLM',
+      ownerId: 'priya',  approverId: 'aarav', dueInDays: 7,  status: 'in-progress', effort: 'L', expectedDriftReduction: 14,
+      summary: 'AI Act Art. 53 obliges providers of general-purpose AI models to maintain technical documentation. The internal LLM was not in the register.',
+      steps: [
+        { id: 's1', label: 'Draft a GPAI register schema (model name, version, training data summary, evaluation, copyright policy)', done: true,  doneAt: '2026-05-08', doneBy: 'priya' },
+        { id: 's2', label: 'Back-fill register row for the internal LLM',                                                              done: true,  doneAt: '2026-05-13', doneBy: 'priya' },
+        { id: 's3', label: 'Wire deployment pipeline to refuse promotion without a register entry',                                    done: false },
+        { id: 's4', label: 'Walk the register through Legal + Privacy review',                                                          done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'Signed GPAI register PDF',                                  fulfilled: false },
+        { id: 'e2', kind: 'policy-section', label: 'Link Responsible AI Use Policy section that mandates this', fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-05', who: 'priya', what: 'created the action and assigned it to herself' },
+        { at: '2026-05-08', who: 'priya', what: 'completed step "Draft GPAI register schema"' },
+        { at: '2026-05-13', who: 'priya', what: 'completed step "Back-fill register row"' }
+      ]
+    },
+    {
+      id: 'A-2002', riskId: 'R-002', title: 'Implement data lineage capture for fraud-detection training pipeline',
+      ownerId: 'priya',  approverId: 'ananya', dueInDays: 14, status: 'planned',     effort: 'M', expectedDriftReduction: 9,
+      summary: 'AI Act Art. 10 demands provenance and bias-mitigation evidence for training data; lineage is the cheapest way to demonstrate it.',
+      steps: [
+        { id: 's1', label: 'Inventory current data sources feeding the model',                                  done: false },
+        { id: 's2', label: 'Stand up OpenLineage emission in the feature-store ETL',                            done: false },
+        { id: 's3', label: 'Backfill lineage for the last two production training runs',                        done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'OpenLineage export (JSON) for the latest run',              fulfilled: false },
+        { id: 'e2', kind: 'link',           label: 'Lineage dashboard URL (internal)',                          fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-09', who: 'priya', what: 'created the action and is scoping it' }
+      ]
+    },
+    {
+      id: 'A-2003', riskId: 'R-003', title: 'Enable LUKS at rest + re-key legacy KYC datastore (P1)',
+      ownerId: 'vikram', approverId: 'aarav', dueInDays: 3,  status: 'in-progress', effort: 'M', expectedDriftReduction: 18,
+      summary: 'GDPR Art. 32 (post-EDPB Op. 4/2026) now mandates encryption at rest for high-risk processing. The legacy datastore is the last gap.',
+      steps: [
+        { id: 's1', label: 'Cut a maintenance window with KYC ops',                                              done: true,  doneAt: '2026-05-14', doneBy: 'vikram' },
+        { id: 's2', label: 'Enable LUKS on the legacy volume',                                                   done: true,  doneAt: '2026-05-16', doneBy: 'vikram' },
+        { id: 's3', label: 'Rotate the keys via KMS (yearly rotation enforced)',                                 done: false },
+        { id: 's4', label: 'Update the Encryption Standard policy section to reflect the new key cadence',       done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'KMS rotation audit log (PDF or CSV)',                       fulfilled: false },
+        { id: 'e2', kind: 'policy-section', label: 'Link Encryption Standard §3 (Encryption at rest)',          fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-12', who: 'vikram', what: 'created the action and pulled in vikram + aarav' },
+        { at: '2026-05-14', who: 'vikram', what: 'started the action' }
+      ]
+    },
+    {
+      id: 'A-2004', riskId: 'R-004', title: 'Enforce mTLS on remaining services in mesh (Istio policy)',
+      ownerId: 'vikram', approverId: 'rohan', dueInDays: 10, status: 'in-progress', effort: 'M', expectedDriftReduction: 7,
+      summary: 'NIS2 Art. 21 calls for cryptography in transit. 82% of services are mTLS-only; 18% still allow plaintext.',
+      steps: [
+        { id: 's1', label: 'Identify the 23 services still allowing plaintext',                                  done: true,  doneAt: '2026-05-11', doneBy: 'vikram' },
+        { id: 's2', label: 'Open PRs to flip the Istio PeerAuthentication policy to STRICT',                     done: false },
+        { id: 's3', label: 'Watch error budgets for 72h after rollout',                                          done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'PeerAuthentication YAML showing mode: STRICT',              fulfilled: false },
+        { id: 'e2', kind: 'confirmation',   label: 'Confirm no plaintext traffic in the last 24h dashboard',     fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-09', who: 'vikram', what: 'created the action' },
+        { at: '2026-05-11', who: 'vikram', what: 'completed inventory step' }
+      ]
+    },
+    {
+      id: 'A-2005', riskId: 'R-005', title: 'Tune incident triage runbook to hit 4-hour SLA (DORA Art. 17)',
+      ownerId: 'vikram', approverId: 'aarav', dueInDays: 5,  status: 'in-progress', effort: 'S', expectedDriftReduction: 6,
+      summary: 'DORA Art. 17 expects sub-4h triage. Current MTTR P95 is 4h45m.',
+      steps: [
+        { id: 's1', label: 'Move PagerDuty primary on-call to follow-the-sun',                                   done: true,  doneAt: '2026-05-13', doneBy: 'vikram' },
+        { id: 's2', label: 'Add a Sev-1 triage checklist to the runbook',                                        done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'link',           label: 'PagerDuty schedule URL after change',                       fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-12', who: 'vikram', what: 'created the action' },
+        { at: '2026-05-13', who: 'vikram', what: 'moved on-call rotation' }
+      ]
+    },
+    {
+      id: 'A-2006', riskId: 'R-006', title: 'Re-collect subprocessor chain from top-25 SaaS vendors',
+      ownerId: 'rohan',  approverId: 'aarav', dueInDays: 21, status: 'planned',     effort: 'L', expectedDriftReduction: 8,
+      summary: 'EDPB Opinion 4/2026 sharpens the documented LIA + subprocessor chain. Top-25 vendors cover 92% of EU personal-data flow.',
+      steps: [
+        { id: 's1', label: 'Send subprocessor-disclosure questionnaire to top-25 vendors',                       done: false },
+        { id: 's2', label: 'Capture responses in the vendor register',                                            done: false },
+        { id: 's3', label: 'Update privacy notice with the new chain',                                            done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'Vendor register export (CSV)',                              fulfilled: false }
+      ],
+      history: [{ at: '2026-05-15', who: 'rohan', what: 'created the action' }]
+    },
+    {
+      id: 'A-2007', riskId: 'R-007', title: 'Roll out SBOM scanner across CI for all container images',
+      ownerId: 'vikram', approverId: 'aarav', dueInDays: 30, status: 'planned',     effort: 'L', expectedDriftReduction: 11,
+      summary: 'CRA Art. 13 mandates SBOM disclosure. We need every image to ship an SPDX/CycloneDX manifest.',
+      steps: [
+        { id: 's1', label: 'Add syft to the base CI image',                                                       done: false },
+        { id: 's2', label: 'Fail the pipeline if the SBOM is missing',                                            done: false },
+        { id: 's3', label: 'Backfill SBOMs for the 12 already-released services',                                done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'Sample CycloneDX JSON from CI',                             fulfilled: false },
+        { id: 'e2', kind: 'confirmation',   label: 'Confirm SBOM-presence gate is enforced for all repos',       fulfilled: false }
+      ],
+      history: [{ at: '2026-05-15', who: 'vikram', what: 'created the action' }]
+    },
+    {
+      id: 'A-2008', riskId: 'R-008', title: 'Run DPIA for credit-scoring AI (model card + bias eval)',
+      ownerId: 'ananya', approverId: 'aarav', dueInDays: 12, status: 'in-progress', effort: 'M', expectedDriftReduction: 10,
+      summary: 'GDPR Art. 35 + AI Act Art. 9: high-risk automated decision-making needs a DPIA before promotion.',
+      steps: [
+        { id: 's1', label: 'Draft model card (intended use, dataset, limits)',                                    done: true,  doneAt: '2026-05-13', doneBy: 'ananya' },
+        { id: 's2', label: 'Run bias evaluation across protected classes',                                        done: false },
+        { id: 's3', label: 'Walk the DPIA through DPO + Legal',                                                   done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'Signed DPIA report (PDF)',                                  fulfilled: false },
+        { id: 'e2', kind: 'policy-section', label: 'Link Responsible AI Use Policy §3 (high-risk reviews)',     fulfilled: false }
+      ],
+      history: [
+        { at: '2026-05-10', who: 'ananya', what: 'created the action' },
+        { at: '2026-05-13', who: 'ananya', what: 'drafted model card' }
+      ]
+    },
+    {
+      id: 'A-2009', riskId: 'R-009', title: 'Raise CloudWatch retention to 180 days on prod-eu-1 cluster',
+      ownerId: 'vikram', approverId: 'aarav', dueInDays: 6,  status: 'planned',     effort: 'S', expectedDriftReduction: 5,
+      summary: 'CERT-In §5: ICT systems must retain logs for 180 days. Currently 90.',
+      steps: [
+        { id: 's1', label: 'Flip CloudWatch retention to 180 days',                                               done: false },
+        { id: 's2', label: 'Backfill the last 90 days from S3 archive',                                           done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'confirmation',   label: 'Confirm retention setting via AWS console screenshot',       fulfilled: false }
+      ],
+      history: [{ at: '2026-05-15', who: 'vikram', what: 'created the action' }]
+    },
+    {
+      id: 'A-2010', riskId: 'R-010', title: 'Add 5 new CDP processing activities to RoPA',
+      ownerId: 'ananya', approverId: 'aarav', dueInDays: 14, status: 'planned',     effort: 'S', expectedDriftReduction: 4,
+      summary: 'GDPR Art. 30: every processing activity must be recorded. The new CDP introduced 5 untracked activities.',
+      steps: [
+        { id: 's1', label: 'Walk through CDP with the data engineering lead',                                     done: false },
+        { id: 's2', label: 'Write 5 RoPA entries (purpose, basis, retention, recipients)',                        done: false }
+      ],
+      evidenceRequirements: [
+        { id: 'e1', kind: 'document',       label: 'Updated RoPA register PDF',                                 fulfilled: false }
+      ],
+      history: [{ at: '2026-05-15', who: 'ananya', what: 'created the action' }]
+    }
   ];
 
   /* --------------------- Internal policies (seeded) ----------------------
@@ -1382,6 +1550,344 @@ window.DATA = (() => {
     return out;
   }
 
+  /* ============================================================
+     ============ Preventive-Action lifecycle API ===============
+     ============================================================
+
+     Status state machine (with side-channel `blocked`):
+
+         planned ─► in-progress ─► review ─► done
+                        │             ▲
+                        └── blocked ──┘    (unblock returns to in-progress)
+
+     The shape of a fully-fledged action lives at the top of this
+     file (search "Each Preventive Action is a workflow object").
+
+     What approval actually DOES is the interesting bit:
+       1. closes the linked risk         (risk.status = 'closed')
+       2. drops the linked-control drift (by expectedDriftReduction)
+       3. writes an Evidence Vault row   (one per fulfilled requirement)
+       4. logs a "live" activity event   (so it shows up in the feed)
+       5. fires a toast at the UI layer
+
+     The pure-data layer doesn't import the UI or the live engine;
+     instead it exposes hooks (`__sideEffectHooks`) that the browser
+     wires up on boot. This keeps the data layer Node-testable.
+  -------------------------------------------------------------- */
+
+  const SEVERITY_WEIGHT = { critical: 1.6, high: 1.3, medium: 1.0, low: 0.7 };
+  const STATUS_ORDER    = { planned: 0, 'in-progress': 1, blocked: 1, review: 2, done: 3 };
+
+  /* External listeners: app.js + live.js can subscribe. */
+  const __sideEffectHooks = {
+    onActionApproved: []   // (payload) => void
+  };
+  function onActionApproved(fn) {
+    if (typeof fn === 'function') __sideEffectHooks.onActionApproved.push(fn);
+  }
+  function _fireApproved(payload) {
+    __sideEffectHooks.onActionApproved.forEach(function (fn) {
+      try { fn(payload); } catch (_) {}
+    });
+  }
+
+  function _findAction(id) {
+    for (let i = 0; i < actions.length; i++) if (actions[i].id === id) return actions[i];
+    return null;
+  }
+
+  function _ensureHistory(a) {
+    if (!Array.isArray(a.history)) a.history = [];
+    return a.history;
+  }
+  function _logHistory(a, who, what) {
+    _ensureHistory(a).push({
+      at: new Date().toISOString().slice(0, 10),
+      who: who || a.ownerId || 'system',
+      what: what
+    });
+  }
+
+  function actionProgress(action) {
+    const a = (typeof action === 'string') ? _findAction(action) : action;
+    if (!a) return { stepsDone: 0, stepsTotal: 0, evidenceDone: 0, evidenceTotal: 0, percent: 0, complete: false };
+    const steps = a.steps || [];
+    const reqs  = a.evidenceRequirements || [];
+    const sDone = steps.filter(function (s) { return s.done; }).length;
+    const eDone = reqs.filter(function (r) { return r.fulfilled; }).length;
+    const total = steps.length + reqs.length;
+    const done  = sDone + eDone;
+    return {
+      stepsDone: sDone,
+      stepsTotal: steps.length,
+      evidenceDone: eDone,
+      evidenceTotal: reqs.length,
+      percent: total === 0 ? 0 : Math.round((done / total) * 100),
+      complete: total > 0 && done === total
+    };
+  }
+
+  /* Rank open actions by expected impact × severity of the linked risk.
+     Used by the "Next best action" hero on the Actions page. */
+  function nextBestAction() {
+    const open = actions.filter(function (a) {
+      return a.status === 'planned' || a.status === 'in-progress' || a.status === 'blocked';
+    });
+    if (!open.length) return null;
+    return open.slice().sort(function (a, b) {
+      const ra = indexes.risks[a.riskId];
+      const rb = indexes.risks[b.riskId];
+      const wa = SEVERITY_WEIGHT[(ra && ra.severity) || 'medium'] || 1;
+      const wb = SEVERITY_WEIGHT[(rb && rb.severity) || 'medium'] || 1;
+      const sa = (a.expectedDriftReduction || 0) * wa;
+      const sb = (b.expectedDriftReduction || 0) * wb;
+      if (sb !== sa) return sb - sa;
+      return (a.dueInDays || 999) - (b.dueInDays || 999);
+    })[0];
+  }
+
+  function startAction(actionId, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done') return { ok: false, error: 'Action already done' };
+    if (a.status === 'planned' || a.status === 'blocked') {
+      a.status = 'in-progress';
+      delete a.blockedReason;
+      a.startedAt = a.startedAt || new Date().toISOString().slice(0, 10);
+      _logHistory(a, who || a.ownerId, 'started the action');
+    }
+    return { ok: true, action: a };
+  }
+
+  function toggleActionStep(actionId, stepId, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done') return { ok: false, error: 'Cannot edit a completed action' };
+    const step = (a.steps || []).find(function (s) { return s.id === stepId; });
+    if (!step) return { ok: false, error: 'Step not found' };
+    step.done = !step.done;
+    if (step.done) {
+      step.doneAt = new Date().toISOString().slice(0, 10);
+      step.doneBy = who || a.ownerId;
+      _logHistory(a, who || a.ownerId, 'completed step "' + step.label + '"');
+      if (a.status === 'planned') {
+        a.status = 'in-progress';
+        a.startedAt = a.startedAt || new Date().toISOString().slice(0, 10);
+        _logHistory(a, who || a.ownerId, 'started the action');
+      }
+    } else {
+      delete step.doneAt; delete step.doneBy;
+      _logHistory(a, who || a.ownerId, 're-opened step "' + step.label + '"');
+    }
+    return { ok: true, action: a, step: step };
+  }
+
+  /* Attach an artifact (or typed confirmation) against an evidence requirement.
+     `payload` shape depends on `req.kind`:
+       document       -> { fileName, fileSize, dataUrl? }
+       policy-section -> { policyId, sectionId, sectionTitle }
+       link           -> { url }
+       confirmation   -> { text }
+  */
+  function attachActionEvidence(actionId, evReqId, payload, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done') return { ok: false, error: 'Cannot edit a completed action' };
+    const req = (a.evidenceRequirements || []).find(function (r) { return r.id === evReqId; });
+    if (!req) return { ok: false, error: 'Evidence requirement not found' };
+    if (!payload || typeof payload !== 'object') return { ok: false, error: 'Missing payload' };
+
+    if (req.kind === 'link') {
+      if (!payload.url || !/^https?:\/\//i.test(payload.url)) return { ok: false, error: 'A http(s) URL is required' };
+    } else if (req.kind === 'confirmation') {
+      if (!payload.text || String(payload.text).trim().length < 3) return { ok: false, error: 'Type at least a few words to confirm' };
+    } else if (req.kind === 'policy-section') {
+      if (!payload.policyId) return { ok: false, error: 'Pick a policy section' };
+    } else if (req.kind === 'document') {
+      if (!payload.fileName) return { ok: false, error: 'Attach a file' };
+    }
+
+    req.fulfilled = true;
+    req.fulfilledAt = new Date().toISOString().slice(0, 10);
+    req.fulfilledBy = who || a.ownerId;
+    req.payload = Object.assign({}, payload);
+    _logHistory(a, who || a.ownerId, 'attached evidence for "' + req.label + '"');
+    if (a.status === 'planned') {
+      a.status = 'in-progress';
+      a.startedAt = a.startedAt || new Date().toISOString().slice(0, 10);
+      _logHistory(a, who || a.ownerId, 'started the action');
+    }
+    return { ok: true, action: a, req: req };
+  }
+
+  function markActionBlocked(actionId, reason, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done') return { ok: false, error: 'Action already done' };
+    if (!reason || String(reason).trim().length < 3) return { ok: false, error: 'Tell us why this is blocked' };
+    a.status = 'blocked';
+    a.blockedReason = String(reason).trim();
+    _logHistory(a, who || a.ownerId, 'marked the action blocked: ' + a.blockedReason);
+    return { ok: true, action: a };
+  }
+
+  function unblockAction(actionId, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status !== 'blocked') return { ok: false, error: 'Action is not blocked' };
+    a.status = 'in-progress';
+    delete a.blockedReason;
+    _logHistory(a, who || a.ownerId, 'un-blocked the action');
+    return { ok: true, action: a };
+  }
+
+  function submitActionForReview(actionId, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done')   return { ok: false, error: 'Action already done' };
+    if (a.status === 'review') return { ok: false, error: 'Action already in review' };
+    const prog = actionProgress(a);
+    if (!prog.complete) {
+      return {
+        ok: false,
+        error: 'Finish ' + (prog.stepsTotal - prog.stepsDone) + ' step(s) and ' +
+               (prog.evidenceTotal - prog.evidenceDone) + ' evidence requirement(s) before submitting'
+      };
+    }
+    a.status = 'review';
+    a.submittedAt = new Date().toISOString().slice(0, 10);
+    _logHistory(a, who || a.ownerId, 'submitted the action for ' + (indexes.personas[a.approverId] ? indexes.personas[a.approverId].name : 'approval'));
+    return { ok: true, action: a };
+  }
+
+  /* The big one: approve closes the risk + applies all side-effects. */
+  function approveAction(actionId, who) {
+    const a = _findAction(actionId);
+    if (!a) return { ok: false, error: 'Action not found' };
+    if (a.status === 'done')   return { ok: false, error: 'Action already done' };
+    if (a.status !== 'review') return { ok: false, error: 'Only actions in review can be approved' };
+
+    a.status = 'done';
+    a.completedAt = new Date().toISOString().slice(0, 10);
+    a.approvedAt  = a.completedAt;
+    _logHistory(a, who || a.approverId || 'approver', 'approved the action');
+
+    /* --- side-effect 1: close the risk ----------------------------- */
+    const risk = indexes.risks[a.riskId];
+    if (risk) {
+      risk.status     = 'closed';
+      risk.closedAt   = a.completedAt;
+      risk.closedById = a.id;
+    }
+
+    /* --- side-effect 2: drop the linked-control drift -------------- */
+    const drop = a.expectedDriftReduction || 0;
+    let control = null;
+    if (risk && risk.controlId) {
+      control = indexes.controls[risk.controlId];
+      if (control) {
+        control.drift    = Math.max(0, (control.drift || 0) - drop);
+        control.maturity = Math.min(100, (control.maturity || 0) + Math.round(drop / 2));
+      }
+    }
+
+    /* --- side-effect 3: write Evidence Vault row(s) ---------------- */
+    const writtenEvidence = [];
+    const today = new Date().toISOString().slice(0, 10);
+    (a.evidenceRequirements || []).forEach(function (req, idx) {
+      if (!req.fulfilled) return;
+      const evId = 'EV-A-' + a.id.replace(/^A-/, '') + '-' + (idx + 1);
+      const row = {
+        id: evId,
+        controlId: (risk && risk.controlId) || null,
+        name: req.label,
+        collectedAt: today,
+        expiresInDays: 365,
+        source: 'Preventive Action ' + a.id,
+        actionId: a.id,
+        policyId: (req.payload && req.payload.policyId) || null,
+        url: (req.payload && req.payload.url) || ((req.payload && req.payload.dataUrl) || null),
+        note: (req.payload && req.payload.text) || (req.payload && req.payload.fileName) || (req.payload && req.payload.sectionTitle) || null,
+        autoDerived: false
+      };
+      evidence.push(row);
+      indexes.evidence[evId] = row;
+      writtenEvidence.push(row);
+    });
+
+    /* --- side-effect 4: notify hook subscribers (live feed, toasts) */
+    const payload = {
+      action:   a,
+      risk:     risk || null,
+      control:  control || null,
+      evidence: writtenEvidence,
+      driftDropped: drop
+    };
+    _fireApproved(payload);
+
+    return Object.assign({ ok: true }, payload);
+  }
+
+  /* Bulk-create one action per open risk that lacks one.
+     Used by the "Generate preventive actions" button on Compliance Gaps. */
+  function generateActionsFromRisks(riskIds) {
+    const ids = Array.isArray(riskIds) && riskIds.length ? riskIds : risks.map(function (r) { return r.id; });
+    const existing = {};
+    actions.forEach(function (a) { existing[a.riskId] = true; });
+
+    const created = [];
+    ids.forEach(function (rid) {
+      if (existing[rid]) return;
+      const r = indexes.risks[rid];
+      if (!r) return;
+      if (r.status === 'closed') return;
+
+      const reg = indexes.regulations[r.regId];
+      const fc  = r.frameworkControlId ? (function () {
+        const all = Object.keys(frameworkControls);
+        for (let i = 0; i < all.length; i++) {
+          const arr = frameworkControls[all[i]];
+          for (let j = 0; j < arr.length; j++) if (arr[j].id === r.frameworkControlId) return arr[j];
+        }
+        return null;
+      })() : null;
+
+      const sevToDrift = { critical: 16, high: 11, medium: 7, low: 4 };
+      const drift = sevToDrift[r.severity] || 7;
+      const newId = 'A-' + (3000 + created.length + actions.length);
+
+      const action = {
+        id: newId,
+        riskId: rid,
+        title: 'Close: ' + r.title,
+        ownerId: r.ownerId,
+        approverId: 'aarav',
+        dueInDays: r.remediationDueDays > 0 ? r.remediationDueDays : 14,
+        status: 'planned',
+        effort: r.severity === 'critical' ? 'L' : (r.severity === 'high' ? 'M' : 'S'),
+        expectedDriftReduction: drift,
+        summary: 'Generated from compliance gap' + (reg ? ' on ' + reg.title : '') + (fc ? ' (' + fc.code + ' — ' + fc.title + ')' : '') + '.',
+        steps: [
+          { id: 's1', label: 'Scope the gap and identify the owning team',                                                  done: false },
+          { id: 's2', label: fc ? ('Draft policy text covering "' + fc.title + '"') : 'Draft policy text covering this gap', done: false },
+          { id: 's3', label: 'Implement the operational control change',                                                     done: false },
+          { id: 's4', label: 'Capture evidence and walk it through ' + (indexes.personas['aarav'] ? indexes.personas['aarav'].name : 'the approver'), done: false }
+        ],
+        evidenceRequirements: [
+          { id: 'e1', kind: 'document',       label: 'Upload the artefact that proves the gap is closed', fulfilled: false },
+          { id: 'e2', kind: 'policy-section', label: fc ? ('Link the policy section that covers ' + fc.code) : 'Link the policy section that covers this gap', fulfilled: false }
+        ],
+        history: [{ at: new Date().toISOString().slice(0, 10), who: 'system', what: 'auto-generated from compliance gap ' + rid }]
+      };
+      actions.push(action);
+      indexes.actions[newId] = action;
+      existing[rid] = true;
+      created.push(action);
+    });
+
+    return { ok: true, created: created };
+  }
+
   /* ------------------------ Helper indexes ------------------------------- */
   const byId   = (arr) => Object.fromEntries(arr.map(x => [x.id, x]));
   const indexes = {
@@ -1437,6 +1943,18 @@ window.DATA = (() => {
     },
     scanPolicyCompliance:  scanPolicyCompliance,
     applyComplianceGaps:   applyComplianceGaps,
+    /* ---------- Preventive-Action lifecycle ---------- */
+    actionProgress:          actionProgress,
+    nextBestAction:          nextBestAction,
+    startAction:             startAction,
+    toggleActionStep:        toggleActionStep,
+    attachActionEvidence:    attachActionEvidence,
+    markActionBlocked:       markActionBlocked,
+    unblockAction:           unblockAction,
+    submitActionForReview:   submitActionForReview,
+    approveAction:           approveAction,
+    generateActionsFromRisks: generateActionsFromRisks,
+    onActionApproved:        onActionApproved,
     MAX_POLICY_FILE_BYTES: MAX_FILE_BYTES
   };
 })();

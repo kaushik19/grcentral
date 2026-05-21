@@ -266,11 +266,32 @@ window.Live = (function () {
 
   function recent(n) { return log.slice(0, Math.max(1, n || 4)); }
 
+  /* Inject a custom event into the live feed (used by Preventive Actions
+     so closing a risk shows up in the activity tile in real time). */
+  function injectEvent(opts) {
+    var o = opts || {};
+    var event = {
+      id:     'lv-' + (o.idHint || Date.now().toString(36)) + Math.random().toString(36).slice(2, 5),
+      at:     o.at || Date.now(),
+      srcId:  o.srcId || 'system',
+      label:  o.label || 'System event',
+      detail: o.detail || '',
+      tone:   o.tone || 'soft',
+      regId:  o.regId || null,
+      impact: o.impact || null
+    };
+    log.unshift(event);
+    if (log.length > MAX_LOG) log.length = MAX_LOG;
+    try { _renderActivityFeed(); } catch (_) {}
+    return event;
+  }
+
   return {
     start:           start,
     syncNow:         syncNow,
     subscribe:       subscribe,
     recent:          recent,
+    injectEvent:     injectEvent,
     fmtClock:        fmtClock,
     fmtAgo:          fmtAgo,
     fmtCountdown:    fmtCountdown,
