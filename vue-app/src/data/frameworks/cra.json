@@ -1,0 +1,18 @@
+{
+  "id": "cra",
+  "title": "Cyber Resilience Act",
+  "shortTitle": "CRA",
+  "celex": "32024R2847",
+  "eli": "http://data.europa.eu/eli/reg/2024/2847/oj",
+  "jurisdiction": "EU",
+  "enactedDate": "2024-10-23",
+  "effectiveDate": "2027-12-11",
+  "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32024R2847",
+  "topics": ["product security", "software security", "SBOM", "vulnerability disclosure", "IoT", "connected products"],
+  "controls": [
+    { "id": "cra-art13", "code": "Art. 13", "title": "Obligations of manufacturers",                             "severity": "critical", "summary": "Manufacturers must ensure products with digital elements are designed, developed, and produced with security by design, handling vulnerabilities throughout the lifecycle, providing a SBOM, and reporting exploited vulnerabilities.", "keywords": ["manufacturer obligations", "security by design", "lifecycle", "SBOM", "software bill of materials", "vulnerability handling", "secure development"] },
+    { "id": "cra-art14", "code": "Art. 14", "title": "Reporting obligations of manufacturers",                   "severity": "critical", "summary": "Manufacturers must report actively exploited vulnerabilities to ENISA within 24 hours (early warning) and a detailed notification within 72 hours. Voluntary reporting of other vulnerabilities is encouraged.", "keywords": ["vulnerability reporting", "ENISA", "24 hours", "72 hours", "exploited vulnerability", "early warning"] },
+    { "id": "cra-art20", "code": "Art. 20", "title": "Vulnerability handling requirements",                      "severity": "high",     "summary": "Manufacturers must identify and document vulnerabilities in products, promptly deploy security updates, and maintain a coordinated vulnerability disclosure policy.", "keywords": ["vulnerability handling", "security updates", "patching", "coordinated disclosure", "CVD", "vulnerability database"] },
+    { "id": "cra-art23", "code": "Art. 23", "title": "SBOM — Software Bill of Materials",                       "severity": "high",     "summary": "Manufacturers must draw up and maintain a SBOM covering at minimum the top-level dependencies, in a machine-readable format (SPDX or CycloneDX), and provide it upon request.", "keywords": ["SBOM", "software bill of materials", "SPDX", "CycloneDX", "dependencies", "machine-readable", "transparency"] }
+  ]
+}
